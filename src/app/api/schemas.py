@@ -27,6 +27,9 @@ class MessageOut(BaseModel):
     direction: Direction
     text: str
     at: datetime
+    photo_id: str | None = Field(
+        None, description="Фото собеседника. Байты забираются отдельным запросом"
+    )
 
 
 class SendMessageRequest(BaseModel):

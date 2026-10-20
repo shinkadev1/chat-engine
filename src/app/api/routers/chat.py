@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 
 from app.api.deps import AccountDep
 from app.api.schemas import ChatStatus, HistoryResponse, MessageOut, SendMessageRequest
@@ -43,6 +44,31 @@ async def send_message(payload: SendMessageRequest, account: AccountDep) -> Mess
     """Передать сообщение текущему собеседнику. Ошибка, если собеседника нет."""
     message = await account.service.send_message(payload.text)
     return MessageOut.model_validate(message)
+
+
+@router.post(
+    "/photos",
+    status_code=status.HTTP_201_CREATED,
+    summary="Отправить фото",
+    responses=_CONFLICT,
+)
+async def send_photo(account: AccountDep, file: UploadFile) -> MessageOut:
+    """Передать фото текущему собеседнику файлом."""
+    data = await file.read(20 * 1024 * 1024 + 1)
+    if len(data) > 20 * 1024 * 1024:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Файл больше 20 МБ")
+    message = await account.service.send_photo(data)
+    return MessageOut.model_validate(message)
+
+
+@router.get("/photos/{photo_id}", summary="Забрать фото собеседника")
+async def get_photo(photo_id: str, account: AccountDep) -> Response:
+    """Отдаёт байты один раз. Повторный запрос отвечает 404."""
+    found = account.service.take_photo(photo_id)
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Фото не найдено")
+    data, content_type = found
+    return Response(content=data, media_type=content_type)
 
 
 @router.get("/messages", summary="Переписка")

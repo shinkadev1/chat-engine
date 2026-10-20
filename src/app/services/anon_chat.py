@@ -7,12 +7,26 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
+from io import BytesIO
+from uuid import uuid4
 
 from telethon import TelegramClient
 
 from app.config import Settings
 
 logger = logging.getLogger(__name__)
+
+# Анонимный бот прячет чужое фото за этой подписью. В наш диалог уходит сам файл.
+_PHOTO_NOTICE_RE = re.compile(
+    r"хочет отправить вам фото|нажмите на фото|не скрывать для этого диалога",
+    re.IGNORECASE,
+)
+_MAX_PHOTO_BYTES = 20 * 1024 * 1024
+_MAX_PENDING_PHOTOS = 8
+
+
+def is_photo_notice(text: str) -> bool:
+    return bool(_PHOTO_NOTICE_RE.search(text))
 
 
 class ChatState(StrEnum):
@@ -42,6 +56,7 @@ class ChatMessage:
     direction: Direction
     text: str
     at: datetime
+    photo_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +91,7 @@ class AnonChatService:
         self._seq = 0
         self._lock = asyncio.Lock()
         self._subscribers: set[asyncio.Queue[ChatEvent]] = set()
+        self._photos: dict[str, tuple[bytes, str]] = {}
 
     @property
     def bot_username(self) -> str:
@@ -139,8 +155,46 @@ class AnonChatService:
             await self._send(text)
             return self._record(Direction.OUTGOING, text)
 
+    async def handle_bot_photo(self, data: bytes, content_type: str) -> None:
+        """Кладёт фото собеседника в очередь, чтобы мост отдал файл человеку."""
+        if not data or len(data) > _MAX_PHOTO_BYTES:
+            logger.warning("Фото %s байт не передаю", len(data))
+            return
+        if not content_type.startswith("image/"):
+            content_type = "image/jpeg"
+        photo_id = uuid4().hex
+        self._photos[photo_id] = (data, content_type)
+        while len(self._photos) > _MAX_PENDING_PHOTOS:
+            self._photos.pop(next(iter(self._photos)))
+        async with self._lock:
+            if self._state is not ChatState.CHATTING:
+                self._photos.pop(photo_id, None)
+                logger.info("Фото пришло вне диалога")
+                return
+            self._record_photo(photo_id)
+        logger.info("Фото собеседника %s байт", len(data))
+
+    def take_photo(self, photo_id: str) -> tuple[bytes, str] | None:
+        """Отдаёт байты один раз. Повторный запрос уже ничего не найдёт."""
+        return self._photos.pop(photo_id, None)
+
+    async def send_photo(self, data: bytes) -> ChatMessage:
+        """Отправляет фото в анонимный чат как файл, а не подписью."""
+        async with self._lock:
+            if self._state is not ChatState.CHATTING:
+                raise ChatError(f"No partner connected (state={self._state})")
+            if not data or len(data) > _MAX_PHOTO_BYTES:
+                raise ChatError("Photo is empty or larger than 20 MB")
+            buffer = BytesIO(data)
+            buffer.name = "photo.jpg"
+            await self._client.send_file(self._bot_username, buffer, force_document=False)
+            return self._record(Direction.OUTGOING, "[фото]")
+
     async def handle_bot_message(self, text: str) -> None:
         """Classify an incoming message from the anonymous chat bot."""
+        if is_photo_notice(text):
+            logger.info("Пропускаю подпись к скрытому фото")
+            return
         async with self._lock:
             if self._found_re.search(text):
                 self._set_state(ChatState.CHATTING)
@@ -174,12 +228,19 @@ class AnonChatService:
         self._publish(ChatEvent(type=EventType.STATE, state=state))
 
     def _record(self, direction: Direction, text: str) -> ChatMessage:
+        return self._remember(direction, text, None)
+
+    def _record_photo(self, photo_id: str) -> ChatMessage:
+        return self._remember(Direction.INCOMING, "", photo_id)
+
+    def _remember(self, direction: Direction, text: str, photo_id: str | None) -> ChatMessage:
         self._seq += 1
         message = ChatMessage(
             seq=self._seq,
             direction=direction,
             text=text,
             at=datetime.now(UTC),
+            photo_id=photo_id,
         )
         self._history.append(message)
         self._publish(ChatEvent(type=EventType.MESSAGE, state=self._state, message=message))
