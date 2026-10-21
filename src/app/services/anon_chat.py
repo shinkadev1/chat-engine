@@ -16,17 +16,29 @@ from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
-# Анонимный бот прячет чужое фото за этой подписью. В наш диалог уходит сам файл.
-_PHOTO_NOTICE_RE = re.compile(
-    r"хочет отправить вам фото|нажмите на фото|не скрывать для этого диалога",
+# Анонимный бот прячет чужой файл за этой подписью. В наш диалог уходит сам файл.
+_NOTICE_LINE_RE = re.compile(
+    r"хочет отправить вам (?:фото|видео)|"
+    r"нажмите на (?:фото|видео)|"
+    r"не скрывать для этого диалога|"
+    r"^подпись к (?:фото|видео)\s*:?\s*$",
     re.IGNORECASE,
 )
+_CAPTION_PREFIX_RE = re.compile(r"^подпись к (?:фото|видео)\s*:\s*", re.IGNORECASE)
 _MAX_PHOTO_BYTES = 20 * 1024 * 1024
-_MAX_PENDING_PHOTOS = 8
+_MAX_VIDEO_BYTES = 100 * 1024 * 1024
+_MAX_PENDING_FILES = 8
 
 
-def is_photo_notice(text: str) -> bool:
-    return bool(_PHOTO_NOTICE_RE.search(text))
+def partner_text(text: str) -> str:
+    """Убирает служебную подпись анонимного бота. Пустая строка в диалог не попадает."""
+    kept: list[str] = []
+    for line in text.splitlines():
+        stripped = _CAPTION_PREFIX_RE.sub("", line.strip()).strip()
+        if not stripped or _NOTICE_LINE_RE.search(stripped):
+            continue
+        kept.append(stripped)
+    return "\n".join(kept).strip()
 
 
 class ChatState(StrEnum):
@@ -57,6 +69,7 @@ class ChatMessage:
     text: str
     at: datetime
     photo_id: str | None = None
+    video_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +104,7 @@ class AnonChatService:
         self._seq = 0
         self._lock = asyncio.Lock()
         self._subscribers: set[asyncio.Queue[ChatEvent]] = set()
-        self._photos: dict[str, tuple[bytes, str]] = {}
+        self._files: dict[str, tuple[bytes, str, str]] = {}
 
     @property
     def bot_username(self) -> str:
@@ -157,26 +170,47 @@ class AnonChatService:
 
     async def handle_bot_photo(self, data: bytes, content_type: str) -> None:
         """Кладёт фото собеседника в очередь, чтобы мост отдал файл человеку."""
-        if not data or len(data) > _MAX_PHOTO_BYTES:
-            logger.warning("Фото %s байт не передаю", len(data))
+        await self.handle_bot_media(data, content_type, "photo")
+
+    async def handle_bot_media(self, data: bytes, content_type: str, kind: str) -> None:
+        """Кладёт фото или видео собеседника в очередь. Мост забирает байты и отдаёт их человеку."""
+        limit = _MAX_VIDEO_BYTES if kind == "video" else _MAX_PHOTO_BYTES
+        if kind not in ("photo", "video") or not data or len(data) > limit:
+            logger.warning("Файл %s размером %s байт не передаю", kind, len(data) if data else 0)
             return
-        if not content_type.startswith("image/"):
+        if kind == "photo" and not content_type.startswith("image/"):
             content_type = "image/jpeg"
-        photo_id = uuid4().hex
-        self._photos[photo_id] = (data, content_type)
-        while len(self._photos) > _MAX_PENDING_PHOTOS:
-            self._photos.pop(next(iter(self._photos)))
+        if kind == "video" and not content_type.startswith("video/"):
+            content_type = "video/mp4"
+        file_id = uuid4().hex
+        self._files[file_id] = (data, content_type, kind)
+        while len(self._files) > _MAX_PENDING_FILES:
+            self._files.pop(next(iter(self._files)))
         async with self._lock:
             if self._state is not ChatState.CHATTING:
-                self._photos.pop(photo_id, None)
-                logger.info("Фото пришло вне диалога")
+                self._files.pop(file_id, None)
+                logger.info("Файл пришёл вне диалога")
                 return
-            self._record_photo(photo_id)
-        logger.info("Фото собеседника %s байт", len(data))
+            if kind == "photo":
+                self._record_photo(file_id)
+            else:
+                self._record_video(file_id)
+        logger.info("%s собеседника, %s байт", "Видео" if kind == "video" else "Фото", len(data))
 
     def take_photo(self, photo_id: str) -> tuple[bytes, str] | None:
         """Отдаёт байты один раз. Повторный запрос уже ничего не найдёт."""
-        return self._photos.pop(photo_id, None)
+        return self._take_file(photo_id, "photo")
+
+    def take_video(self, video_id: str) -> tuple[bytes, str] | None:
+        """Отдаёт байты один раз. Повторный запрос уже ничего не найдёт."""
+        return self._take_file(video_id, "video")
+
+    def _take_file(self, file_id: str, kind: str) -> tuple[bytes, str] | None:
+        found = self._files.get(file_id)
+        if found is None or found[2] != kind:
+            return None
+        del self._files[file_id]
+        return found[0], found[1]
 
     async def send_photo(self, data: bytes) -> ChatMessage:
         """Отправляет фото в анонимный чат как файл, а не подписью."""
@@ -192,8 +226,9 @@ class AnonChatService:
 
     async def handle_bot_message(self, text: str) -> None:
         """Classify an incoming message from the anonymous chat bot."""
-        if is_photo_notice(text):
-            logger.info("Пропускаю подпись к скрытому фото")
+        text = partner_text(text)
+        if not text:
+            logger.info("Пропускаю подпись к файлу анонимного чата")
             return
         async with self._lock:
             if self._found_re.search(text):
@@ -228,12 +263,21 @@ class AnonChatService:
         self._publish(ChatEvent(type=EventType.STATE, state=state))
 
     def _record(self, direction: Direction, text: str) -> ChatMessage:
-        return self._remember(direction, text, None)
+        return self._remember(direction, text, None, None)
 
     def _record_photo(self, photo_id: str) -> ChatMessage:
-        return self._remember(Direction.INCOMING, "", photo_id)
+        return self._remember(Direction.INCOMING, "", photo_id, None)
 
-    def _remember(self, direction: Direction, text: str, photo_id: str | None) -> ChatMessage:
+    def _record_video(self, video_id: str) -> ChatMessage:
+        return self._remember(Direction.INCOMING, "", None, video_id)
+
+    def _remember(
+        self,
+        direction: Direction,
+        text: str,
+        photo_id: str | None,
+        video_id: str | None,
+    ) -> ChatMessage:
         self._seq += 1
         message = ChatMessage(
             seq=self._seq,
@@ -241,6 +285,7 @@ class AnonChatService:
             text=text,
             at=datetime.now(UTC),
             photo_id=photo_id,
+            video_id=video_id,
         )
         self._history.append(message)
         self._publish(ChatEvent(type=EventType.MESSAGE, state=self._state, message=message))

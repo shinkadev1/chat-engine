@@ -71,6 +71,16 @@ async def get_photo(photo_id: str, account: AccountDep) -> Response:
     return Response(content=data, media_type=content_type)
 
 
+@router.get("/videos/{video_id}", summary="Забрать видео собеседника")
+async def get_video(video_id: str, account: AccountDep) -> Response:
+    """Отдаёт байты один раз. Повторный запрос отвечает 404."""
+    found = account.service.take_video(video_id)
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Видео не найдено")
+    data, content_type = found
+    return Response(content=data, media_type=content_type)
+
+
 @router.get("/messages", summary="Переписка")
 async def get_messages(
     account: AccountDep,

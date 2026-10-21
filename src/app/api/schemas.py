@@ -30,6 +30,9 @@ class MessageOut(BaseModel):
     photo_id: str | None = Field(
         None, description="Фото собеседника. Байты забираются отдельным запросом"
     )
+    video_id: str | None = Field(
+        None, description="Видео собеседника. Байты забираются отдельным запросом"
+    )
 
 
 class SendMessageRequest(BaseModel):
