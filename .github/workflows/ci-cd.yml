@@ -39,6 +39,9 @@ jobs:
       - name: Ruff format
         run: uv run --frozen ruff format --check src
 
+      - name: Tests
+        run: uv run --frozen pytest -q
+
   build:
     needs: lint
     runs-on: ubuntu-latest

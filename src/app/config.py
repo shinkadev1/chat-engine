@@ -68,6 +68,11 @@ class Settings(BaseSettings):
         r"диалог (завершен|завершён|окончен)|partner left|chat (ended|stopped)"
     )
 
+    anon_limit_pattern: str = r"исчерпали дневной лимит|лимит на чаты будет снят через"
+    anon_limit_default_seconds: int = Field(
+        3600, ge=60, description="Limit duration when the bot text has no time to wait"
+    )
+
     history_limit: int = Field(200, ge=1, description="Max messages kept in memory per chat")
 
     def account_configs(self) -> list[AccountConfig]:

@@ -10,6 +10,9 @@ from app.services.anon_chat import ChatEvent, ChatState, Direction, EventType
 class ChatStatus(BaseModel):
     state: ChatState
     last_seq: int = Field(..., description="Sequence number of the last recorded message")
+    limited_until: datetime | None = Field(
+        None, description="Until when the anonymous bot limits the account (state=limited)"
+    )
 
 
 class AccountOut(BaseModel):
@@ -18,6 +21,9 @@ class AccountOut(BaseModel):
     username: str | None
     bot_username: str
     state: ChatState | None = Field(None, description="Null while the account is unauthorized")
+    limited_until: datetime | None = Field(
+        None, description="Until when the anonymous bot limits the account (state=limited)"
+    )
 
 
 class MessageOut(BaseModel):

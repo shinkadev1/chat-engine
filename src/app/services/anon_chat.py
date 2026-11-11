@@ -5,7 +5,7 @@ from collections import deque
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from io import BytesIO
 from uuid import uuid4
@@ -25,6 +25,7 @@ _NOTICE_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 _CAPTION_PREFIX_RE = re.compile(r"^подпись к (?:фото|видео)\s*:\s*", re.IGNORECASE)
+_LIMIT_DURATION_RE = re.compile(r"через\s+(\d{1,3}):([0-5]\d):([0-5]\d)", re.IGNORECASE)
 _MAX_PHOTO_BYTES = 20 * 1024 * 1024
 _MAX_VIDEO_BYTES = 100 * 1024 * 1024
 _MAX_PENDING_FILES = 8
@@ -41,10 +42,20 @@ def partner_text(text: str) -> str:
     return "\n".join(kept).strip()
 
 
+def parse_limit_duration(text: str) -> timedelta | None:
+    """Достаёт «через ЧЧ:ММ:СС» из текста про дневной лимит анонимного бота."""
+    match = _LIMIT_DURATION_RE.search(text)
+    if match is None:
+        return None
+    hours, minutes, seconds = (int(part) for part in match.groups())
+    return timedelta(hours=hours, minutes=minutes, seconds=seconds)
+
+
 class ChatState(StrEnum):
     IDLE = "idle"
     SEARCHING = "searching"
     CHATTING = "chatting"
+    LIMITED = "limited"
 
 
 class Direction(StrEnum):
@@ -99,6 +110,11 @@ class AnonChatService:
         self._found_re = re.compile(settings.anon_partner_found_pattern, re.IGNORECASE)
         self._left_re = re.compile(settings.anon_partner_left_pattern, re.IGNORECASE)
 
+        self._limit_re = re.compile(settings.anon_limit_pattern, re.IGNORECASE)
+        self._limit_default = timedelta(seconds=settings.anon_limit_default_seconds)
+        self._limited_until: datetime | None = None
+        self._limit_task: asyncio.Task[None] | None = None
+
         self._state = ChatState.IDLE
         self._history: deque[ChatMessage] = deque(maxlen=settings.history_limit)
         self._seq = 0
@@ -113,6 +129,10 @@ class AnonChatService:
     @property
     def state(self) -> ChatState:
         return self._state
+
+    @property
+    def limited_until(self) -> datetime | None:
+        return self._limited_until
 
     @property
     def last_seq(self) -> int:
@@ -135,6 +155,11 @@ class AnonChatService:
     async def start_chat(self) -> ChatState:
         """Ask the bot for a new partner."""
         async with self._lock:
+            if self._state is ChatState.LIMITED and self._limited_until is not None:
+                raise ChatError(
+                    "Account is limited by the anonymous bot until "
+                    f"{self._limited_until.isoformat()}"
+                )
             if self._state is not ChatState.IDLE:
                 raise ChatError(f"Chat is already active (state={self._state})")
 
@@ -149,6 +174,8 @@ class AnonChatService:
     async def stop_chat(self) -> ChatState:
         """Leave the current dialog or cancel the search."""
         async with self._lock:
+            if self._state is ChatState.LIMITED:
+                raise ChatError("Account is limited, nothing to stop")
             if self._state is ChatState.IDLE:
                 raise ChatError("There is no active chat to stop")
 
@@ -231,7 +258,16 @@ class AnonChatService:
             logger.info("Пропускаю подпись к файлу анонимного чата")
             return
         async with self._lock:
-            if self._found_re.search(text):
+            if self._state is not ChatState.CHATTING and self._limit_re.search(text):
+                self._record(Direction.SYSTEM, text)
+                duration = parse_limit_duration(text)
+                if duration is None:
+                    duration = self._limit_default
+                self._limited_until = datetime.now(UTC) + duration
+                self._set_state(ChatState.LIMITED)
+                self._restart_limit_timer(duration.total_seconds())
+                logger.warning("Anonymous bot daily limit, wait until %s", self._limited_until)
+            elif self._found_re.search(text):
                 self._set_state(ChatState.CHATTING)
                 self._record(Direction.SYSTEM, text)
                 logger.info("Partner found")
@@ -244,8 +280,24 @@ class AnonChatService:
             else:
                 self._record(Direction.SYSTEM, text)
 
+    def _restart_limit_timer(self, seconds: float) -> None:
+        if self._limit_task is not None:
+            self._limit_task.cancel()
+        self._limit_task = asyncio.create_task(self._release_limit(seconds))
+
+    async def _release_limit(self, seconds: float) -> None:
+        await asyncio.sleep(seconds)
+        async with self._lock:
+            if self._state is ChatState.LIMITED:
+                self._limited_until = None
+                self._set_state(ChatState.IDLE)
+                logger.info("Anonymous bot limit is over")
+
     async def shutdown(self) -> None:
-        if self._state is ChatState.IDLE:
+        if self._limit_task is not None:
+            self._limit_task.cancel()
+            self._limit_task = None
+        if self._state in (ChatState.IDLE, ChatState.LIMITED):
             return
         try:
             await self._send(self._stop_command)

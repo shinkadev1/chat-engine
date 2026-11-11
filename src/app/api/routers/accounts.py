@@ -16,6 +16,7 @@ async def list_accounts(manager: ManagerDep) -> list[AccountOut]:
             username=account.username,
             bot_username=account.config.anon_bot_username,
             state=account.service.state if account.authorized else None,
+            limited_until=account.service.limited_until if account.authorized else None,
         )
         for account in manager.list()
     ]

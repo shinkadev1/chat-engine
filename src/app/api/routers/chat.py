@@ -3,6 +3,7 @@ from fastapi.responses import Response
 
 from app.api.deps import AccountDep
 from app.api.schemas import ChatStatus, HistoryResponse, MessageOut, SendMessageRequest
+from app.services.anon_chat import ChatState
 
 router = APIRouter(
     prefix="/accounts/{account_id}/chat",
@@ -18,20 +19,25 @@ _CONFLICT = {
 }
 
 
+def _status(account: AccountDep, state: ChatState) -> ChatStatus:
+    service = account.service
+    return ChatStatus(state=state, last_seq=service.last_seq, limited_until=service.limited_until)
+
+
 @router.post(
     "/start", status_code=status.HTTP_202_ACCEPTED, summary="Начать чат", responses=_CONFLICT
 )
 async def start_chat(account: AccountDep) -> ChatStatus:
     """Попросить бота найти случайного собеседника. Ошибка, если чат уже идёт."""
     state = await account.service.start_chat()
-    return ChatStatus(state=state, last_seq=account.service.last_seq)
+    return _status(account, state)
 
 
 @router.post("/stop", summary="Закончить чат", responses=_CONFLICT)
 async def stop_chat(account: AccountDep) -> ChatStatus:
     """Выйти из текущего диалога или отменить поиск. Ошибка, если чата нет."""
     state = await account.service.stop_chat()
-    return ChatStatus(state=state, last_seq=account.service.last_seq)
+    return _status(account, state)
 
 
 @router.post(
@@ -98,4 +104,4 @@ async def get_messages(
 @router.get("/status", summary="Текущее состояние")
 async def get_status(account: AccountDep) -> ChatStatus:
     """Состояние чата и `seq` последнего сообщения, чтобы дальше опрашивать `/messages`."""
-    return ChatStatus(state=account.service.state, last_seq=account.service.last_seq)
+    return _status(account, account.service.state)
