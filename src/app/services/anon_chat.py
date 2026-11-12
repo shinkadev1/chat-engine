@@ -267,9 +267,6 @@ class AnonChatService:
         if not text:
             logger.info("Пропускаю подпись к файлу анонимного чата")
             return
-        if self._service_re is not None and self._service_re.search(text):
-            logger.info("Пропускаю служебное сообщение анонимного бота")
-            return
         async with self._lock:
             if self._state is not ChatState.CHATTING and self._limit_re.search(text):
                 self._record(Direction.SYSTEM, text)
@@ -288,6 +285,8 @@ class AnonChatService:
                 self._set_state(ChatState.IDLE)
                 self._record(Direction.SYSTEM, text)
                 logger.info("Partner left")
+            elif self._service_re is not None and self._service_re.search(text):
+                logger.info("Пропускаю служебное сообщение анонимного бота")
             elif self._state is ChatState.CHATTING:
                 self._record(Direction.INCOMING, text)
             else:

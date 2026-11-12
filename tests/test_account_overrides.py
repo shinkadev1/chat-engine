@@ -17,6 +17,7 @@ LEFT = (
 SERVICE = [
     "💡 Подсказка от бота: используй /next",
     "🔍 Надоели случайные собеседники? Включи поиск по полу",
+    "Сначала подключи собеседника. Нажми /next",
     "💫 Хочешь продолжить общение?\n\nВерни собеседника в диалог 👇",
 ]
 
@@ -59,7 +60,6 @@ class OverrideResolutionTest(unittest.TestCase):
         self.assertEqual(acc.anon_limit_pattern, settings.anon_limit_pattern)
         self.assertTrue(acc.anon_service_pattern)
 
-
 class AdultBotTextsTest(unittest.IsolatedAsyncioTestCase):
     def service(self) -> tuple[AnonChatService, FakeClient]:
         settings, (acc,) = make([example_spec1()])
@@ -87,6 +87,27 @@ class AdultBotTextsTest(unittest.IsolatedAsyncioTestCase):
             await svc.handle_bot_message(text)
         self.assertEqual(svc.last_seq, before)
         self.assertIs(svc.state, ChatState.CHATTING)
+
+    async def test_found_left_win_over_service_phrase(self) -> None:
+        svc, _ = self.service()
+        await svc.start_chat()
+        await svc.handle_bot_message(FOUND + "\n\n💡 Подсказка от бота")
+        self.assertIs(svc.state, ChatState.CHATTING)
+        await svc.handle_bot_message(LEFT + "\n\nХочешь продолжить общение?")
+        self.assertIs(svc.state, ChatState.IDLE)
+
+    async def test_partner_text_with_tip_phrase_is_kept(self) -> None:
+        svc, _ = self.service()
+        await svc.start_chat()
+        await svc.handle_bot_message(FOUND)
+        await svc.handle_bot_message("хочешь продолжить общение в тг?")
+        last = svc.history()[-1]
+        self.assertEqual(last.direction, Direction.INCOMING)
+        self.assertEqual(last.text, "хочешь продолжить общение в тг?")
+
+    def test_bad_pattern_fails_at_resolve(self) -> None:
+        with self.assertRaisesRegex(ValueError, "bad"):
+            make([{"id": "x", "anon_service_pattern": "(unclosed"}])
 
     async def test_default_service_has_no_filter(self) -> None:
         settings = Settings(_env_file=None)

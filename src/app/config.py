@@ -1,8 +1,9 @@
 import json
+import re
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +28,22 @@ class AccountConfig(BaseModel):
     anon_service_pattern: str | None = Field(
         None, description="Служебные/рекламные сообщения бота: не попадают в диалог"
     )
+
+    @field_validator(
+        "anon_partner_found_pattern",
+        "anon_partner_left_pattern",
+        "anon_limit_pattern",
+        "anon_service_pattern",
+    )
+    @classmethod
+    def _compilable(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value:
+            try:
+                re.compile(value)
+            except re.error as exc:
+                account = info.data.get("id", "?")
+                raise ValueError(f"Account {account!r}: bad {info.field_name}: {exc}") from exc
+        return value
 
 
 class ResolvedAccount(BaseModel):
