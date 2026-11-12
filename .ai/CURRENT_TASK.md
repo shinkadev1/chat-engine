@@ -32,3 +32,7 @@
 ## 2026-11-11 — engine-limit-failover (часть chat-engine)
 
 Реализовано в ветке loop/engine-limit-failover: limited, таймер, limited_until, тесты. Следующий шаг — ревью и релиз по плану задачи.
+
+## 2026-11-12 — «Пошлый чат» (часть chat-engine)
+
+Ветка feat/adult-chat: `mode` (normal|adult) в accounts.json и в `GET /api/v1/accounts`; пример аккаунта spec1 → @chatruIetkabot. Не запушено и не слито. Для работы нужен вход `docker compose run --rm app login spec1`. Логика premium-доступа — в других репозиториях.

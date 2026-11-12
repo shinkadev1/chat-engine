@@ -33,3 +33,7 @@
 ## 2026-11-11 — limited
 
 Ветка loop/engine-limit-failover: состояние limited, limited_until, тесты pytest. Не выкачено, не слито. Реальный текст лимита проверен только на фейковом клиенте.
+
+## 2026-11-12 — mode аккаунта
+
+Ветка feat/adult-chat: AccountConfig.mode, поле mode в AccountOut. pytest: 13 passed (включая tests/test_accounts_mode.py). Реальный аккаунт spec1 и @chatruIetkabot не проверялись (нужен login); поведение бота в adult-режиме не отличается от normal.

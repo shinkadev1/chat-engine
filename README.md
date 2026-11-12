@@ -63,12 +63,21 @@ cp accounts.example.json accounts.json   # файл со списком акка
 ```json
 [
   {"id": "main", "phone": "+70000000000"},
-  {"id": "second", "phone": "+70000000001", "anon_bot_username": "@AnonRuBot"}
+  {"id": "second", "phone": "+70000000001", "anon_bot_username": "@AnonRuBot"},
+  {"id": "spec1", "phone": "+70000000002", "anon_bot_username": "@chatruIetkabot", "mode": "adult"}
 ]
 ```
 
 Либо инлайном в `.env`: `ACCOUNTS=[{"id":"main"},{"id":"second"}]`.
 Если не задано ничего, используется один аккаунт `default`.
+
+Поля аккаунта: `id` (обязателен), `phone`, `api_id`, `api_hash`, `session_name`,
+`anon_bot_username` (бот-собеседник аккаунта) и `mode` — `normal` (по умолчанию)
+или `adult` («пошлый чат», только для premium-пользователей; обслуживается
+аккаунтом `spec1`, который общается с `@chatruIetkabot`). Другое значение `mode`
+— ошибка валидации при запуске. `GET /api/v1/accounts` возвращает `mode` для
+каждого аккаунта. Аккаунту `spec1` нужен отдельный вход:
+`docker compose run --rm app login spec1`.
 
 Обязателен только `id`; `api_id`, `api_hash` и `anon_bot_username`, если не
 указаны у аккаунта, берутся из `.env`, а файл сессии по умолчанию —

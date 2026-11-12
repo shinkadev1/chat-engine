@@ -7,5 +7,11 @@
     "id": "second",
     "phone": "+70000000001",
     "anon_bot_username": "@AnonRuBot"
+  },
+  {
+    "id": "spec1",
+    "phone": "+70000000002",
+    "anon_bot_username": "@chatruIetkabot",
+    "mode": "adult"
   }
 ]

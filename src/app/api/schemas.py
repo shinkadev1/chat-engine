@@ -20,6 +20,7 @@ class AccountOut(BaseModel):
     authorized: bool
     username: str | None
     bot_username: str
+    mode: Literal["normal", "adult"] = "normal"
     state: ChatState | None = Field(None, description="Null while the account is unauthorized")
     limited_until: datetime | None = Field(
         None, description="Until when the anonymous bot limits the account (state=limited)"

@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,6 +15,9 @@ class AccountConfig(BaseModel):
     session_name: str | None = Field(None, description="Defaults to <SESSIONS_DIR>/<id>")
     phone: str | None = Field(None, description="Pre-fills the number during `login`")
     anon_bot_username: str | None = None
+    mode: Literal["normal", "adult"] = Field(
+        "normal", description="normal — обычный анонимный чат, adult — «пошлый чат» (premium)"
+    )
 
 
 class ResolvedAccount(BaseModel):
@@ -25,6 +29,7 @@ class ResolvedAccount(BaseModel):
     session_path: str
     phone: str | None
     anon_bot_username: str
+    mode: Literal["normal", "adult"] = "normal"
 
 
 class Settings(BaseSettings):
@@ -113,6 +118,7 @@ class Settings(BaseSettings):
                     session_path=session_path,
                     phone=config.phone,
                     anon_bot_username=config.anon_bot_username or self.anon_bot_username,
+                    mode=config.mode,
                 )
             )
 
