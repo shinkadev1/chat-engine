@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from telethon import TelegramClient
 
-from app.config import Settings
+from app.config import ResolvedAccount, Settings
 
 logger = logging.getLogger(__name__)
 
@@ -102,15 +102,25 @@ class AnonChatService:
     WebSocket clients get updates without polling.
     """
 
-    def __init__(self, client: TelegramClient, settings: Settings, bot_username: str) -> None:
+    def __init__(
+        self,
+        client: TelegramClient,
+        settings: Settings,
+        bot_username: str,
+        account: ResolvedAccount | None = None,
+    ) -> None:
         self._client = client
         self._bot_username = bot_username
-        self._search_command = settings.anon_search_command
-        self._stop_command = settings.anon_stop_command
-        self._found_re = re.compile(settings.anon_partner_found_pattern, re.IGNORECASE)
-        self._left_re = re.compile(settings.anon_partner_left_pattern, re.IGNORECASE)
+        # Поля аккаунта (с уже применёнными фолбэками) главнее глобальных настроек.
+        source = account or settings
+        self._search_command = source.anon_search_command
+        self._stop_command = source.anon_stop_command
+        self._found_re = re.compile(source.anon_partner_found_pattern, re.IGNORECASE)
+        self._left_re = re.compile(source.anon_partner_left_pattern, re.IGNORECASE)
+        service_pattern = getattr(source, "anon_service_pattern", None)
+        self._service_re = re.compile(service_pattern, re.IGNORECASE) if service_pattern else None
 
-        self._limit_re = re.compile(settings.anon_limit_pattern, re.IGNORECASE)
+        self._limit_re = re.compile(source.anon_limit_pattern, re.IGNORECASE)
         self._limit_default = timedelta(seconds=settings.anon_limit_default_seconds)
         self._limited_until: datetime | None = None
         self._limit_task: asyncio.Task[None] | None = None
@@ -256,6 +266,9 @@ class AnonChatService:
         text = partner_text(text)
         if not text:
             logger.info("Пропускаю подпись к файлу анонимного чата")
+            return
+        if self._service_re is not None and self._service_re.search(text):
+            logger.info("Пропускаю служебное сообщение анонимного бота")
             return
         async with self._lock:
             if self._state is not ChatState.CHATTING and self._limit_re.search(text):

@@ -22,3 +22,7 @@
 ## 2026-11-12 — режим аккаунта mode (не выкачено)
 
 Контракт: в accounts.json необязательное `mode` ("normal"|"adult", по умолчанию normal; иное — ошибка при старте); `GET /api/v1/accounts` возвращает `mode`. Пример spec1 в accounts.example.json. Тесты: tests/test_accounts_mode.py.
+
+## 2026-11-12 — per-account anon_* (не выкачено)
+
+Контракт accounts.json: необязательные anon_search_command/stop_command/partner_found_pattern/partner_left_pattern/limit_pattern/service_pattern. Совпавшее с service-паттерном сообщение отбрасывается до классификации. Тесты: tests/test_account_overrides.py.

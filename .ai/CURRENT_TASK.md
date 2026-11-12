@@ -36,3 +36,5 @@
 ## 2026-11-12 — «Пошлый чат» (часть chat-engine)
 
 Ветка feat/adult-chat: `mode` (normal|adult) в accounts.json и в `GET /api/v1/accounts`; пример аккаунта spec1 → @chatruIetkabot. Не запушено и не слито. Для работы нужен вход `docker compose run --rm app login spec1`. Логика premium-доступа — в других репозиториях.
+
+Дополнение 2026-11-12: переопределения anon_* по аккаунту и anon_service_pattern для @chatruIetkabot (команды /next, /stop; живой зонд сделан координатором).

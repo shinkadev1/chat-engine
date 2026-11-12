@@ -68,7 +68,9 @@ class AccountManager:
 
     async def _start_account(self, config: ResolvedAccount) -> None:
         client = create_client(config)
-        service = AnonChatService(client, self._settings, bot_username=config.anon_bot_username)
+        service = AnonChatService(
+            client, self._settings, bot_username=config.anon_bot_username, account=config
+        )
         register_handlers(client, service=service)
 
         account = Account(config=config, client=client, service=service)

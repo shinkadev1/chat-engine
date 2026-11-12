@@ -37,3 +37,5 @@
 ## 2026-11-12 — mode аккаунта
 
 Ветка feat/adult-chat: AccountConfig.mode, поле mode в AccountOut. pytest: 13 passed (включая tests/test_accounts_mode.py). Реальный аккаунт spec1 и @chatruIetkabot не проверялись (нужен login); поведение бота в adult-режиме не отличается от normal.
+
+Переопределения по аккаунту: anon_search_command, anon_stop_command, anon_partner_found_pattern, anon_partner_left_pattern, anon_limit_pattern, anon_service_pattern (новое, по умолчанию выключено). Проверено только на фейковом клиенте и текстах из живого зонда; текст ухода собеседника и дневного лимита у @chatruIetkabot не наблюдался.

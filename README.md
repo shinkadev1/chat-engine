@@ -76,7 +76,12 @@ cp accounts.example.json accounts.json   # файл со списком акка
 или `adult` («пошлый чат», только для premium-пользователей; обслуживается
 аккаунтом `spec1`, который общается с `@chatruIetkabot`). Другое значение `mode`
 — ошибка валидации при запуске. `GET /api/v1/accounts` возвращает `mode` для
-каждого аккаунта. Аккаунту `spec1` нужен отдельный вход:
+каждого аккаунта. Необязательные переопределения под конкретного бота (иначе берутся глобальные
+`ANON_*`): `anon_search_command`, `anon_stop_command`, `anon_partner_found_pattern`,
+`anon_partner_left_pattern`, `anon_limit_pattern` и `anon_service_pattern` —
+служебные/рекламные сообщения бота (с inline-кнопками и т. п.), которые
+отбрасываются и не попадают в диалог. Готовый пример для `@chatruIetkabot` — в
+`accounts.example.json`. Аккаунту `spec1` нужен отдельный вход:
 `docker compose run --rm app login spec1`.
 
 Обязателен только `id`; `api_id`, `api_hash` и `anon_bot_username`, если не

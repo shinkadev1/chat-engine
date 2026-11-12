@@ -18,6 +18,15 @@ class AccountConfig(BaseModel):
     mode: Literal["normal", "adult"] = Field(
         "normal", description="normal — обычный анонимный чат, adult — «пошлый чат» (premium)"
     )
+    # Необязательные переопределения; без них берутся глобальные ANON_* из Settings.
+    anon_search_command: str | None = None
+    anon_stop_command: str | None = None
+    anon_partner_found_pattern: str | None = None
+    anon_partner_left_pattern: str | None = None
+    anon_limit_pattern: str | None = None
+    anon_service_pattern: str | None = Field(
+        None, description="Служебные/рекламные сообщения бота: не попадают в диалог"
+    )
 
 
 class ResolvedAccount(BaseModel):
@@ -30,6 +39,12 @@ class ResolvedAccount(BaseModel):
     phone: str | None
     anon_bot_username: str
     mode: Literal["normal", "adult"] = "normal"
+    anon_search_command: str = "/search"
+    anon_stop_command: str = "/stop"
+    anon_partner_found_pattern: str = ""
+    anon_partner_left_pattern: str = ""
+    anon_limit_pattern: str = ""
+    anon_service_pattern: str | None = None
 
 
 class Settings(BaseSettings):
@@ -119,6 +134,16 @@ class Settings(BaseSettings):
                     phone=config.phone,
                     anon_bot_username=config.anon_bot_username or self.anon_bot_username,
                     mode=config.mode,
+                    anon_search_command=config.anon_search_command or self.anon_search_command,
+                    anon_stop_command=config.anon_stop_command or self.anon_stop_command,
+                    anon_partner_found_pattern=(
+                        config.anon_partner_found_pattern or self.anon_partner_found_pattern
+                    ),
+                    anon_partner_left_pattern=(
+                        config.anon_partner_left_pattern or self.anon_partner_left_pattern
+                    ),
+                    anon_limit_pattern=config.anon_limit_pattern or self.anon_limit_pattern,
+                    anon_service_pattern=config.anon_service_pattern,
                 )
             )
 
