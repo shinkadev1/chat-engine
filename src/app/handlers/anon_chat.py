@@ -11,15 +11,46 @@ def register(client: TelegramClient, *, service: AnonChatService) -> None:
     async def handle_bot_message(event: events.NewMessage.Event) -> None:
         message = event.message
         text = message.message or ""
+        _log_incoming(service, message, "new")
         kind = _media_kind(message)
         if kind is not None:
             await _forward_media(message, service, kind)
         if text:
             await service.handle_bot_message(text)
 
+    async def log_bot_edit(event: events.MessageEdited.Event) -> None:
+        # Только диагностика: правки сообщений бота в диалог не попадают.
+        _log_incoming(service, event.message, "edit")
+
     client.add_event_handler(
         handle_bot_message,
         events.NewMessage(from_users=service.bot_username, incoming=True),
+    )
+    client.add_event_handler(
+        log_bot_edit,
+        events.MessageEdited(from_users=service.bot_username, incoming=True),
+    )
+
+
+def _log_incoming(service: AnonChatService, message, source: str) -> None:
+    """Диагностика формата сообщений анонимного бота: тип медиа и начало текста."""
+    media = type(message.media).__name__ if message.media is not None else "-"
+    # Текст собеседника в диалоге не пишем — только служебные сообщения вне диалога.
+    raw = message.message or ""
+    if service.state == "chatting":
+        text = f"<{len(raw)} симв.>"
+    else:
+        text = raw.replace("\n", " | ")[:160]
+    logger.info(
+        "Бот -> %s [%s] id=%s state=%s media=%s photo=%s buttons=%s text=%r",
+        service.account_id,
+        source,
+        message.id,
+        service.state,
+        media,
+        bool(message.photo),
+        message.reply_markup is not None,
+        text,
     )
 
 

@@ -111,6 +111,7 @@ class AnonChatService:
     ) -> None:
         self._client = client
         self._bot_username = bot_username
+        self.account_id = account.id if account is not None else "default"
         # Поля аккаунта (с уже применёнными фолбэками) главнее глобальных настроек.
         source = account or settings
         self._search_command = source.anon_search_command
