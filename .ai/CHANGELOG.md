@@ -30,3 +30,7 @@
 ## 2026-11-13 — несколько ботов на аккаунт (не выкачено)
 
 Контракт: ResolvedAccount.bots, accounts.json `anon_bots`/`anon_bot_profiles`, env ANON_FALLBACK_BOTS/ANON_BOT_PROFILES/ANON_BOT_UNAVAILABLE_SECONDS/ANON_BOT_REPLY_TIMEOUT_SECONDS. `GET /accounts` получил `bots[]` (аддитивно). Обработчик без from_users, фильтр по username. CLI `dump-bot`. Тесты: tests/test_multi_bot.py, tests/test_bot_config.py.
+
+## 2026-11-13 — selftest (не выкачено)
+
+Контракт: `POST /api/v1/selftest` (Bearer; 404 неизвестный аккаунт, 409 прогон уже идёт), env SELFTEST_URL для CLI. CLI `bot selftest [--account] [--bot] [--dry-run] [--text] [--*-timeout]`. Режим probe в AnonChatService: сообщения ботов идут только в очередь проверки, не в историю и события. Тесты: tests/test_selftest.py.

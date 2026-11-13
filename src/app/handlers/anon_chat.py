@@ -17,7 +17,7 @@ def register(client: TelegramClient, *, service: AnonChatService) -> None:
         _log_incoming(service, message, "new", bot)
         kind = _media_kind(message)
         # Файлы пересылаем только от бота, который ведёт диалог.
-        if kind is not None and service.is_active_bot(bot):
+        if kind is not None and not service.probing and service.is_active_bot(bot):
             await _forward_media(message, service, kind)
         if text:
             await service.handle_bot_message(text, bot)
@@ -54,7 +54,7 @@ def _log_incoming(service: AnonChatService, message, source: str, bot: str) -> N
     media = type(message.media).__name__ if message.media is not None else "-"
     # Текст собеседника в диалоге не пишем — только служебные сообщения вне диалога.
     raw = message.message or ""
-    if service.state == "chatting":
+    if service.state == "chatting" or service.probing:
         text = f"<{len(raw)} симв.>"
     else:
         text = raw.replace("\n", " | ")[:160]

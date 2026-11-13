@@ -107,3 +107,34 @@ class EventOut(BaseModel):
 class ErrorOut(BaseModel):
     type: Literal["error"] = "error"
     detail: str
+
+
+class SelftestRequest(BaseModel):
+    accounts: list[str] | None = Field(None, description="id аккаунтов; пусто — все")
+    bots: list[str] | None = Field(None, description="Боты для проверки; пусто — все")
+    dry_run: bool = Field(False, description="Только сессия и флаги, без сообщений ботам")
+    text: str = Field("Привет", min_length=1, max_length=4096)
+    search_timeout: float = Field(60, ge=1, le=300)
+    reply_timeout: float = Field(60, ge=1, le=300)
+    close_timeout: float = Field(15, ge=1, le=300)
+
+
+class SelftestPairOut(BaseModel):
+    bot: str
+    status: str
+    detail: str | None = None
+    closed: bool | None = Field(None, description="Бот подтвердил завершение диалога")
+    seconds: float = 0
+
+
+class SelftestAccountOut(BaseModel):
+    account: str
+    username: str | None = None
+    session: str = Field("ok", description="ok или причина проблемы с сессией")
+    flags: list[str] = []
+    pairs: list[SelftestPairOut]
+
+
+class SelftestResponse(BaseModel):
+    dry_run: bool
+    results: list[SelftestAccountOut]

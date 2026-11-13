@@ -174,6 +174,9 @@ class Settings(BaseSettings):
     api_token: str | None = Field(
         None, description="Bearer token required by /api/v1; auth is disabled when empty"
     )
+    selftest_url: str | None = Field(
+        None, description="Адрес API для `bot selftest`; по умолчанию http://127.0.0.1:{api_port}"
+    )
     cors_origins: list[str] = ["*"]
 
     anon_bot_username: str = Field(

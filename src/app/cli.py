@@ -1,8 +1,11 @@
 import argparse
 import asyncio
+import json
 import logging
 import shutil
 import tempfile
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import uvicorn
@@ -100,6 +103,53 @@ async def _dump_bot(account_id: str, bot: str, limit: int) -> None:
             await client.disconnect()
 
 
+def format_selftest(results: list[dict]) -> list[str]:
+    """Таблица результатов самопроверки. Тексты собеседников сюда не попадают."""
+    lines: list[str] = []
+    for item in results:
+        who = f"@{item['username']}" if item.get("username") else "-"
+        lines.append(f"{item['account']:<16} {who:<20} session={item.get('session', 'ok')}")
+        for pair in item.get("pairs", []):
+            closed = {True: "closed", False: "not closed"}.get(pair.get("closed"), "-")
+            detail = f" ({pair['detail']})" if pair.get("detail") else ""
+            lines.append(
+                f"  {pair['bot']:<20} {pair['status']:<15} {closed:<11} "
+                f"{pair.get('seconds', 0):>6.1f}s{detail}"
+            )
+    return lines
+
+
+def _selftest(args: argparse.Namespace) -> None:
+    base = (settings.selftest_url or f"http://127.0.0.1:{settings.api_port}").rstrip("/")
+    payload = {
+        "accounts": args.account or None,
+        "bots": args.bot or None,
+        "dry_run": args.dry_run,
+        "text": args.text,
+        "search_timeout": args.search_timeout,
+        "reply_timeout": args.reply_timeout,
+        "close_timeout": args.close_timeout,
+    }
+    headers = {"Content-Type": "application/json"}
+    if settings.api_token:
+        headers["Authorization"] = f"Bearer {settings.api_token}"
+    request = urllib.request.Request(
+        f"{base}/api/v1/selftest",
+        data=json.dumps(payload).encode(),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=3600) as response:
+            body = json.load(response)
+    except urllib.error.HTTPError as exc:
+        raise SystemExit(f"Selftest failed: HTTP {exc.code}") from None
+    except OSError as exc:
+        raise SystemExit(f"Selftest failed: {type(exc).__name__}") from None
+    for line in format_selftest(body["results"]):
+        print(line)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="app", description="Anonymous chat userbot")
     subparsers = parser.add_subparsers(dest="command")
@@ -118,6 +168,18 @@ def main() -> None:
     dump_parser.add_argument("bot", help="Bot username, e.g. @MessageAnonBot")
     dump_parser.add_argument("--limit", type=int, default=20)
 
+    selftest_parser = subparsers.add_parser(
+        "selftest",
+        help="Check accounts and bots through the running service (writes to real bots)",
+    )
+    selftest_parser.add_argument("--account", action="append", help="Account id (repeatable)")
+    selftest_parser.add_argument("--bot", action="append", help="Bot username (repeatable)")
+    selftest_parser.add_argument("--dry-run", action="store_true", help="Session checks only")
+    selftest_parser.add_argument("--text", default="Привет")
+    selftest_parser.add_argument("--search-timeout", type=float, default=60)
+    selftest_parser.add_argument("--reply-timeout", type=float, default=60)
+    selftest_parser.add_argument("--close-timeout", type=float, default=15)
+
     args = parser.parse_args()
     setup_logging(settings.log_level)
 
@@ -127,6 +189,8 @@ def main() -> None:
                 asyncio.run(_login(args.account_id))
             case "dump-bot":
                 asyncio.run(_dump_bot(args.account_id, args.bot, args.limit))
+            case "selftest":
+                _selftest(args)
             case "accounts":
                 asyncio.run(_show_accounts())
             case _:

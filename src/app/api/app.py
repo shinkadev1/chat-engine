@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app import __version__
 from app.accounts import AccountManager
 from app.api.deps import require_token
-from app.api.routers import accounts, chat, ws
+from app.api.routers import accounts, chat, selftest, ws
 from app.config import settings
 from app.services.anon_chat import ChatError
 
@@ -56,6 +56,7 @@ def create_app() -> FastAPI:
     authenticated = [Depends(require_token)]
     app.include_router(accounts.router, prefix="/api/v1", dependencies=authenticated)
     app.include_router(chat.router, prefix="/api/v1", dependencies=authenticated)
+    app.include_router(selftest.router, prefix="/api/v1", dependencies=authenticated)
     # The WebSocket route checks the token itself: HTTPBearer only handles HTTP requests.
     app.include_router(ws.router, prefix="/api/v1")
 

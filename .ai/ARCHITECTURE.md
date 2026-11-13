@@ -10,12 +10,13 @@ engine_bridge → REST/WS `/api/v1/accounts/{id}/chat/...` → AnonChatService �
 
 | Путь | Ответственность |
 | --- | --- |
-| `src/app/cli.py` | Команды serve / login / accounts. |
+| `src/app/cli.py` | Команды serve / login / accounts / dump-bot / selftest. |
 | `src/app/accounts.py` | Менеджер аккаунтов и отдельных Telethon-клиентов. |
 | `src/app/client.py` | Создание TelegramClient. |
 | `src/app/config.py` | Настройки аккаунтов и внешнего бота. |
 | `src/app/services/anon_chat.py` | Фазы диалога, история и события. |
 | `src/app/handlers/anon_chat.py` | Распознавание служебных сообщений внешнего бота. |
+| `src/app/selftest.py` | Самопроверка пар аккаунт × бот через probe-режим сервиса. |
 | `src/app/api/app.py` | FastAPI и lifespan. |
 | `src/app/api/routers/` | REST управления аккаунтами/чатами и WebSocket. |
 | `src/app/static/index.html` | Веб-интерфейс управления. |

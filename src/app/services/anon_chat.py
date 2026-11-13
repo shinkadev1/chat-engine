@@ -124,6 +124,20 @@ class BotStatus:
     reason: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class ProbeBot:
+    """Бот аккаунта для самопроверки: команды, шаблоны и признак блокировки."""
+
+    username: str
+    search_command: str
+    stop_command: str
+    found_re: re.Pattern[str]
+    left_re: re.Pattern[str]
+    limit_re: re.Pattern[str]
+    service_re: re.Pattern[str] | None
+    blocked: bool
+
+
 def _make_bot(
     username: str,
     *,
@@ -205,6 +219,7 @@ class AnonChatService:
                 )
             ]
         self._active: _Bot | None = None
+        self._probe: asyncio.Queue[tuple[str, str]] | None = None
 
         self._limit_default = timedelta(seconds=settings.anon_limit_default_seconds)
         self._unavailable = timedelta(seconds=settings.anon_bot_unavailable_seconds)
@@ -292,9 +307,52 @@ class AnonChatService:
         finally:
             self._subscribers.discard(queue)
 
+    @property
+    def probing(self) -> bool:
+        return self._probe is not None
+
+    def begin_probe(self) -> asyncio.Queue[tuple[str, str]] | None:
+        """Включает режим самопроверки; None, если аккаунт занят диалогом или уже проверяется.
+
+        Пока режим включён, сообщения ботов уходят только в возвращённую очередь
+        (username бота, текст): ни история, ни подписчики их не видят.
+        """
+        if self._probe is not None or self._state in (ChatState.SEARCHING, ChatState.CHATTING):
+            return None
+        self._probe = asyncio.Queue(maxsize=100)
+        return self._probe
+
+    def end_probe(self) -> None:
+        self._probe = None
+
+    def probe_bots(self, names: list[str] | None = None) -> list[ProbeBot]:
+        """Боты аккаунта по приоритету; `names` оставляет только перечисленные."""
+        keys = {normalize_bot(name) for name in names} if names else None
+        now = self._now()
+        return [
+            ProbeBot(
+                username=bot.username,
+                search_command=bot.search_command,
+                stop_command=bot.stop_command,
+                found_re=bot.found_re,
+                left_re=bot.left_re,
+                limit_re=bot.limit_re,
+                service_re=bot.service_re,
+                blocked=bot.blocked(now),
+            )
+            for bot in self._bots
+            if keys is None or bot.key in keys
+        ]
+
+    async def probe_send(self, bot: str, text: str) -> None:
+        """Шлёт боту сообщение напрямую: без состояния, истории и таймеров."""
+        await self._client.send_message(bot, text)
+
     async def start_chat(self) -> ChatState:
         """Ask the first available bot for a new partner."""
         async with self._lock:
+            if self._probe is not None:
+                raise ChatError("Account is being self-tested")
             if self._state is ChatState.LIMITED and self.limited_until is not None:
                 raise ChatError(
                     "Account is limited by the anonymous bots until "
@@ -491,6 +549,16 @@ class AnonChatService:
                     logger.info("Сообщение от неизвестного бота %s пропущено", bot)
                     return
                 source = found
+
+            if self._probe is not None:
+                # Самопроверка: лимит учитываем, остальное отдаём только проверяющему.
+                if source.limit_re.search(text):
+                    await self._handle_other_bot(source, text)
+                try:
+                    self._probe.put_nowait((source.username, text))
+                except asyncio.QueueFull:
+                    logger.warning("Очередь самопроверки полна, сообщение отброшено")
+                return
 
             if source is not self._current():
                 await self._handle_other_bot(source, text)

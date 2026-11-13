@@ -329,6 +329,27 @@ docker compose run --rm app dump-bot spec1 @MessageAnonBot --limit 20
 Запускать только на прод-сервере (с того же IP, что и сервис): с другого адреса возможна ошибка `AUTH_KEY_DUPLICATED` и потеря сессии.
 
 
+## Самопроверка (selftest)
+
+Проверяет все аккаунты внутри работающего сервиса: сессия, `get_me`, флаги (restricted, scam,
+fake, deleted), затем для каждой пары «аккаунт × бот» — поиск, собеседник, «Привет», ответ, стоп.
+
+```bash
+docker compose exec app bot selftest --dry-run   # только сессии и флаги, ничего не отправляет
+docker compose exec app bot selftest --account spec1 --bot @MessageAnonBot
+```
+
+Опции: `--account`, `--bot` (повторяемые), `--text`, `--search-timeout`, `--reply-timeout`,
+`--close-timeout` (секунды). CLI ходит на `http://127.0.0.1:API_PORT` (или `SELFTEST_URL`) с `API_TOKEN`.
+
+- Без `--dry-run` команда пишет реальным собеседникам и расходует дневные лимиты ботов.
+- Прогон идёт минутами; через Cloudflare-туннель (~100 с) не запускать, только изнутри сервера.
+- Статусы пары: `reply_received`, `partner_found`, `bot_responded`, `no_response`, `limited`,
+  `busy` (аккаунт ищет или в диалоге), `session`, `skipped` (dry-run), `error`; `closed` — бот
+  подтвердил завершение. Тексты собеседников не сохраняются и не выводятся.
+- Одновременно один прогон (повторный запрос — 409). Пока идёт проверка, обычный поиск на
+  проверяемом аккаунте отклоняется.
+
 ## Ограничения
 
 - Один активный диалог на аккаунт: все WebSocket-клиенты, подключённые к одному
