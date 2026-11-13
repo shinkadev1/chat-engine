@@ -225,8 +225,8 @@ class AnonChatService:
         """Бот, которому принадлежит диалог; до первого поиска — основной."""
         return self._active or self._bots[0]
 
-    def _free_bots(self) -> list[_Bot]:
-        now = self._now()
+    def _free_bots(self, now: datetime | None = None) -> list[_Bot]:
+        now = self._now() if now is None else now
         return [bot for bot in self._bots if not bot.blocked(now)]
 
     @property
@@ -266,7 +266,10 @@ class AnonChatService:
 
     @property
     def limited_until(self) -> datetime | None:
-        if self._free_bots():
+        return self._limited_until()
+
+    def _limited_until(self, now: datetime | None = None) -> datetime | None:
+        if self._free_bots(now):
             return None
         untils = [bot.until for bot in self._bots if bot.until is not None]
         return min(untils) if untils else None
@@ -339,12 +342,12 @@ class AnonChatService:
             await self._send(text)
             return self._record(Direction.OUTGOING, text)
 
-    async def _search(self) -> bool:
+    async def _search(self, now: datetime | None = None) -> bool:
         """Шлёт команду поиска первому свободному боту (под self._lock).
 
         Недоступный бот получает until, поиск идёт дальше. Нет свободных — LIMITED.
         """
-        for bot in self._free_bots():
+        for bot in self._free_bots(now):
             try:
                 await self._client.send_message(bot.username, bot.search_command)
             except Exception as exc:
@@ -352,6 +355,7 @@ class AnonChatService:
                     self._block(bot, "flood_wait", timedelta(seconds=max(int(exc.seconds), 1)))
                 else:
                     self._block(bot, "send_error", self._unavailable)
+                now = None
                 logger.warning(
                     "Бот %s недоступен (%s: %s), пробую следующий",
                     bot.username,
@@ -364,17 +368,22 @@ class AnonChatService:
             self._record(Direction.SYSTEM, f"→ {bot.search_command}")
             self._arm_reply_timer(bot)
             return True
-        self._enter_limited()
+        self._enter_limited(now)
         return False
 
-    def _block(self, bot: _Bot, reason: str, duration: timedelta) -> None:
-        bot.until = self._now() + duration
+    def _block(
+        self, bot: _Bot, reason: str, duration: timedelta, now: datetime | None = None
+    ) -> datetime:
+        """Блокирует бота; возвращает момент отсчёта, чтобы решения шли по одному `now`."""
+        now = self._now() if now is None else now
+        bot.until = now + duration
         bot.reason = reason
+        return now
 
-    def _enter_limited(self) -> None:
+    def _enter_limited(self, now: datetime | None = None) -> None:
         self._cancel_reply_timer()
         self._set_state(ChatState.LIMITED)
-        until = self.limited_until
+        until = self._limited_until(now)
         if until is None:
             return
         self._restart_limit_timer(max((until - self._now()).total_seconds(), 0))
@@ -495,12 +504,12 @@ class AnonChatService:
                 duration = parse_limit_duration(text)
                 if duration is None:
                     duration = self._limit_default
-                self._block(source, "limit", duration)
+                now = self._block(source, "limit", duration)
                 logger.warning("Bot %s daily limit, wait until %s", source.username, source.until)
                 if self._state is ChatState.SEARCHING:
-                    await self._search()
-                elif not self._free_bots():
-                    self._enter_limited()
+                    await self._search(now)
+                elif not self._free_bots(now):
+                    self._enter_limited(now)
             elif not (
                 source.strict and self._state is ChatState.CHATTING
             ) and source.found_re.search(text):
@@ -522,10 +531,12 @@ class AnonChatService:
         """Сообщение бота, который сейчас не ведёт диалог: в историю не попадает."""
         if source.limit_re.search(text):
             duration = parse_limit_duration(text)
-            self._block(source, "limit", self._limit_default if duration is None else duration)
+            now = self._block(
+                source, "limit", self._limit_default if duration is None else duration
+            )
             logger.warning("Bot %s (inactive) limit, until %s", source.username, source.until)
-            if self._state is ChatState.IDLE and not self._free_bots():
-                self._enter_limited()
+            if self._state is ChatState.IDLE and not self._free_bots(now):
+                self._enter_limited(now)
         else:
             logger.info("Пропускаю сообщение неактивного бота %s", source.username)
 
