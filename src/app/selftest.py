@@ -130,6 +130,8 @@ async def _probe_pair(
                 break
             if bot.service_re is not None and bot.service_re.search(message):
                 continue
+            if bot.stop_ack_re is not None and bot.stop_ack_re.search(message):
+                continue
             responded = True
         else:
             result.status = BOT_RESPONDED if responded else NO_RESPONSE
@@ -145,6 +147,8 @@ async def _probe_pair(
                 if bot.found_re.search(message) or bot.limit_re.search(message):
                     continue
                 if bot.service_re is not None and bot.service_re.search(message):
+                    continue
+                if bot.stop_ack_re is not None and bot.stop_ack_re.search(message):
                     continue
                 result.status = REPLY_RECEIVED
                 break
@@ -172,9 +176,11 @@ async def _close(
         return True
     deadline = time.monotonic() + wait
     while (message := await _next_text(queue, key, deadline)) is not None:
+        # Закрытие подтверждают только «диалог завершён» или ack нашего стопа;
+        # служебное/рекламное сообщение ещё не доказывает, что диалог закрыт.
         if bot.left_re.search(message):
             return True
-        if bot.service_re is not None and bot.service_re.search(message):
+        if bot.stop_ack_re is not None and bot.stop_ack_re.search(message):
             return True
     return False
 

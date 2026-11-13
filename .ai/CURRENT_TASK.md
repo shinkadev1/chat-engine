@@ -46,3 +46,7 @@
 ## 2026-11-13 — engine-selftest (часть chat-engine)
 
 Ветка loop/engine-selftest: самопроверка всех аккаунтов × ботов внутри сервиса (`bot selftest`, POST /api/v1/selftest). Следующий шаг — ревью, релиз, на сервере `docker compose exec app bot selftest --dry-run`. Полный прогон пишет реальным ботам — только пользователь.
+
+## Профили ботов — 2026-11-13
+
+Ветка loop/engine-bot-profiles: профили по реальным текстам, stop_ack, тесты, README. Не выкачено; текст ухода собеседника у MessageAnonBot не наблюдался (паттерн по стилю семейства); nektome pre-search вопрос и регистрация secretme — вручную.

@@ -64,6 +64,7 @@ def make(script: dict | None = None):
             partner_left_pattern="partner left",
             limit_pattern="исчерпали дневной лимит",
             service_pattern="searching",
+            stop_ack_pattern="you stopped",
             reply_timeout_seconds=0,
         )
         for name in (A, B)
@@ -241,6 +242,18 @@ class SelftestTest(unittest.IsolatedAsyncioTestCase):
         results = await selftest.run_selftest([account], bots=[A], **FAST)
         self.assertFalse(results[0].pairs[0].closed)
         self.assertFalse(service.probing)
+
+    async def test_stop_ack_marks_closed(self) -> None:
+        script = {**happy(A), (A, "/stop"): ["you stopped the chat"]}
+        account, _, _ = make(script)
+        results = await selftest.run_selftest([account], bots=[A], **FAST)
+        self.assertTrue(results[0].pairs[0].closed)
+
+    async def test_service_alone_does_not_close(self) -> None:
+        script = {**happy(A), (A, "/stop"): ["searching ads"]}
+        account, _, _ = make(script)
+        results = await selftest.run_selftest([account], bots=[A], **FAST)
+        self.assertFalse(results[0].pairs[0].closed)
 
     async def test_late_found_after_stop_not_chatting(self) -> None:
         script = {**happy(A), (A, "/stop"): ["chat started", "partner left"]}

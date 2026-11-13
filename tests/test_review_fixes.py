@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from telethon.errors import FloodWaitError
 
 from app.api.routers.accounts import list_accounts
-from app.config import _NEW_BOT_FOUND, _NEW_BOT_LEFT, _NEW_BOT_LIMIT, AccountConfig, Settings
+from app.config import _NEW_BOT_LIMIT, AccountConfig, Settings
 from app.handlers.anon_chat import _bot_of
 from app.services.anon_chat import AnonChatService, ChatState, Direction
 
@@ -21,14 +21,6 @@ class PatternTests(unittest.TestCase):
         self.assertIsNone(rx.search("привет, как дела? бывает лимит на всё"[:12]))
         self.assertTrue(rx.search("Вы исчерпали дневной лимит"))
         self.assertTrue(rx.search("Лимит исчерпан, попробуйте позже"))
-
-    def test_found_left_are_anchored(self) -> None:
-        found = re.compile(_NEW_BOT_FOUND, re.IGNORECASE)
-        left = re.compile(_NEW_BOT_LEFT, re.IGNORECASE)
-        self.assertIsNone(found.search("а потом нашелся собеседник"))
-        self.assertTrue(found.search("Собеседник найден!"))
-        self.assertIsNone(left.search("он сказал: диалог завершён"))
-        self.assertTrue(left.search("Диалог завершён"))
 
     def test_profiled_flag_resolved(self) -> None:
         settings = Settings(_env_file=None)

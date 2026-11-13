@@ -14,6 +14,7 @@ LEFT = (
     "💬 Ты закончил(а) диалог с собеседником\n\n/next — найти следующего\n"
     "/report — пожаловаться на спам"
 )
+PARTNER_LEFT = "💬 Собеседник закончил диалог\n\n/next — найти следующего"
 SERVICE = [
     "💡 Подсказка от бота: используй /next",
     "🔍 Надоели случайные собеседники? Включи поиск по полу",
@@ -75,8 +76,16 @@ class AdultBotTextsTest(unittest.IsolatedAsyncioTestCase):
         self.assertIs(svc.state, ChatState.CHATTING)
         await svc.handle_bot_message("привет")
         self.assertEqual(svc.history()[-1].direction, Direction.INCOMING)
-        await svc.handle_bot_message(LEFT)
+        await svc.handle_bot_message(PARTNER_LEFT)
         self.assertIs(svc.state, ChatState.IDLE)
+
+    async def test_stop_ack_does_not_end_dialog(self) -> None:
+        svc, _ = self.service()
+        await svc.start_chat()
+        await svc.handle_bot_message(FOUND)
+        await svc.handle_bot_message(LEFT)
+        self.assertIs(svc.state, ChatState.CHATTING)
+        self.assertEqual(svc.history()[-1].direction, Direction.SYSTEM)
 
     async def test_service_messages_not_relayed(self) -> None:
         svc, _ = self.service()
@@ -93,7 +102,7 @@ class AdultBotTextsTest(unittest.IsolatedAsyncioTestCase):
         await svc.start_chat()
         await svc.handle_bot_message(FOUND + "\n\n💡 Подсказка от бота")
         self.assertIs(svc.state, ChatState.CHATTING)
-        await svc.handle_bot_message(LEFT + "\n\nХочешь продолжить общение?")
+        await svc.handle_bot_message(PARTNER_LEFT + "\n\nХочешь продолжить общение?")
         self.assertIs(svc.state, ChatState.IDLE)
 
     async def test_partner_text_with_tip_phrase_is_kept(self) -> None:

@@ -102,6 +102,7 @@ class _Bot:
     left_re: re.Pattern[str]
     limit_re: re.Pattern[str]
     service_re: re.Pattern[str] | None
+    stop_ack_re: re.Pattern[str] | None = None
     reply_timeout: float = 0
     strict: bool = False
     until: datetime | None = None
@@ -136,6 +137,7 @@ class ProbeBot:
     limit_re: re.Pattern[str]
     service_re: re.Pattern[str] | None
     blocked: bool
+    stop_ack_re: re.Pattern[str] | None = None
 
 
 def _make_bot(
@@ -148,6 +150,7 @@ def _make_bot(
     limit: str,
     service: str | None,
     reply_timeout: float,
+    stop_ack: str | None = None,
     strict: bool = False,
 ) -> _Bot:
     return _Bot(
@@ -158,6 +161,7 @@ def _make_bot(
         left_re=re.compile(left, re.IGNORECASE),
         limit_re=re.compile(limit, re.IGNORECASE),
         service_re=re.compile(service, re.IGNORECASE) if service else None,
+        stop_ack_re=re.compile(stop_ack, re.IGNORECASE) if stop_ack else None,
         reply_timeout=reply_timeout,
         strict=strict,
     )
@@ -198,6 +202,7 @@ class AnonChatService:
                     left=bot.partner_left_pattern,
                     limit=bot.limit_pattern,
                     service=bot.service_pattern,
+                    stop_ack=getattr(bot, "stop_ack_pattern", None),
                     reply_timeout=bot.reply_timeout_seconds,
                     strict=getattr(bot, "profiled", False),
                 )
@@ -215,6 +220,7 @@ class AnonChatService:
                     left=source.anon_partner_left_pattern,
                     limit=source.anon_limit_pattern,
                     service=getattr(source, "anon_service_pattern", None),
+                    stop_ack=getattr(source, "anon_stop_ack_pattern", None),
                     reply_timeout=0,
                 )
             ]
@@ -340,6 +346,7 @@ class AnonChatService:
                 limit_re=bot.limit_re,
                 service_re=bot.service_re,
                 blocked=bot.blocked(now),
+                stop_ack_re=bot.stop_ack_re,
             )
             for bot in self._bots
             if keys is None or bot.key in keys
@@ -585,6 +592,11 @@ class AnonChatService:
                 self._set_state(ChatState.CHATTING)
                 self._record(Direction.SYSTEM, text)
                 logger.info("Partner found via %s", source.username)
+            elif source.stop_ack_re is not None and source.stop_ack_re.search(text):
+                # Подтверждение нашего стопа: состояние не меняем (иначе оно оборвало бы
+                # новый диалог, начатый сразу после стопа), в историю — как системное.
+                self._record(Direction.SYSTEM, text)
+                logger.info("Бот подтвердил стоп")
             elif source.left_re.search(text):
                 self._set_state(ChatState.IDLE)
                 self._record(Direction.SYSTEM, text)

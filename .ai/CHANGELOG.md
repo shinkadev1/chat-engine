@@ -34,3 +34,7 @@
 ## 2026-11-13 — selftest (не выкачено)
 
 Контракт: `POST /api/v1/selftest` (Bearer; 404 неизвестный аккаунт, 409 прогон уже идёт), env SELFTEST_URL для CLI. CLI `bot selftest [--account] [--bot] [--dry-run] [--text] [--*-timeout]`. Режим probe в AnonChatService: сообщения ботов идут только в очередь проверки, не в историю и события. Тесты: tests/test_selftest.py.
+
+## 2026-11-13 — профили ботов по реальным текстам (не выкачено)
+
+Встроенные профили @MessageAnonBot/@chatruIetkabot (поиск `/next`), @nektome_mibot, @secretme переписаны по текстам с прода; добавлено `stop_ack_pattern` (профиль) / `anon_stop_ack_pattern` (аккаунт, ENV-глобал) и глобальные service/stop_ack для @AnonRuBot. Ack нашего стопа в проде не меняет состояние, в selftest `closed` = left или ack (служебное само не закрывает). Тесты: tests/test_real_bot_texts.py.

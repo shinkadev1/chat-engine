@@ -53,7 +53,7 @@ class BotListTest(unittest.TestCase):
         old, new = acc.bots[0], acc.bots[1]
         self.assertEqual(old.partner_found_pattern, settings.anon_partner_found_pattern)
         self.assertEqual(old.reply_timeout_seconds, 0)
-        self.assertEqual(new.search_command, "/search")
+        self.assertEqual(new.search_command, "/next")
         self.assertNotEqual(new.partner_found_pattern, settings.anon_partner_found_pattern)
         self.assertEqual(new.reply_timeout_seconds, settings.anon_bot_reply_timeout_seconds)
 
@@ -73,7 +73,7 @@ class BotListTest(unittest.TestCase):
         by_name = {b.username: b for b in acc.bots}
         self.assertEqual(by_name["@nektome_mibot"].search_command, "/go")
         self.assertEqual(by_name["@secretme"].search_command, "/find")
-        self.assertEqual(by_name["@MessageAnonBot"].search_command, "/search")
+        self.assertEqual(by_name["@MessageAnonBot"].search_command, "/next")
 
     def test_primary_account_overrides_beat_profiles(self) -> None:
         _, (acc,) = resolve(
