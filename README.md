@@ -322,7 +322,7 @@ ANON_STOP_COMMAND=/stop
 Чтобы снять реальные тексты бота, не отправляя ему ничего:
 
 ```bash
-docker compose run --rm app python -m app dump-bot spec1 @MessageAnonBot --limit 20
+docker compose run --rm app dump-bot spec1 @MessageAnonBot --limit 20
 ```
 
 Команда копирует сессию во временный каталог и только читает историю чата (печатает переписку).
