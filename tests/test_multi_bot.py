@@ -113,7 +113,7 @@ class MultiBotTest(unittest.IsolatedAsyncioTestCase):
         svc, client = make(timeouts={A: 0.05})
         await svc.start_chat()
         await asyncio.sleep(0.2)
-        self.assertEqual(client.sent, [(A, "/search"), (B, "/search")])
+        self.assertEqual(client.sent, [(A, "/search"), (A, "/stop"), (B, "/search")])
         status = {s.username: s for s in svc.bots_status()}
         self.assertEqual(status[A].reason, "no_reply")
         self.assertIs(svc.state, ChatState.SEARCHING)

@@ -55,6 +55,8 @@ class ResolvedBot(BaseModel):
     limit_pattern: str = ""
     service_pattern: str | None = None
     reply_timeout_seconds: float = 0
+    # Есть профиль (встроенный или заданный): паттерны уточнялись под этого бота.
+    profiled: bool = False
 
 
 # Паттерны запасных ботов широкие: точные тексты уточняются через `dump-bot`
@@ -69,7 +71,11 @@ _NEW_BOT_LEFT = (
     r"(?:диалог|чат|общение)|^\W*собеседник\s+(?:покинул|вышел|отключил)|"
     r"^\W*диалог\s+(?:завершен|завершён|окончен|остановлен)"
 )
-_NEW_BOT_LIMIT = r"^\W*(?:.*(?:лимит|исчерпан))|попробуйте\s+позже"
+_NEW_BOT_LIMIT = (
+    r"(?:исчерпал\w*|достигнут\w*|превышен\w*)[^\n]{0,40}лимит|"
+    r"лимит[^\n]{0,40}(?:исчерпан\w*|достигнут\w*|превышен\w*|попробуйте\s+позже)|"
+    r"попробуйте\s+позже[^\n]{0,40}лимит|^\W*лимит"
+)
 
 DEFAULT_BOT_PROFILES: dict[str, BotProfile] = {
     normalize_bot(name): BotProfile(
@@ -263,6 +269,7 @@ class Settings(BaseSettings):
                     limit_pattern=pick("limit_pattern", self.anon_limit_pattern),
                     service_pattern=pick("service_pattern", None),
                     reply_timeout_seconds=timeout,
+                    profiled=bool(profiles),
                 )
             )
         return bots

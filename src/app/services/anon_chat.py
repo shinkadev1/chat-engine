@@ -11,7 +11,7 @@ from io import BytesIO
 from uuid import uuid4
 
 from telethon import TelegramClient
-from telethon.errors import RPCError
+from telethon.errors import FloodWaitError
 
 from app.config import ResolvedAccount, Settings, normalize_bot
 
@@ -103,6 +103,7 @@ class _Bot:
     limit_re: re.Pattern[str]
     service_re: re.Pattern[str] | None
     reply_timeout: float = 0
+    strict: bool = False
     until: datetime | None = None
     reason: str | None = None
 
@@ -133,6 +134,7 @@ def _make_bot(
     limit: str,
     service: str | None,
     reply_timeout: float,
+    strict: bool = False,
 ) -> _Bot:
     return _Bot(
         username=username,
@@ -143,6 +145,7 @@ def _make_bot(
         limit_re=re.compile(limit, re.IGNORECASE),
         service_re=re.compile(service, re.IGNORECASE) if service else None,
         reply_timeout=reply_timeout,
+        strict=strict,
     )
 
 
@@ -182,6 +185,7 @@ class AnonChatService:
                     limit=bot.limit_pattern,
                     service=bot.service_pattern,
                     reply_timeout=bot.reply_timeout_seconds,
+                    strict=getattr(bot, "profiled", False),
                 )
                 for bot in account.bots
             ]
@@ -343,8 +347,11 @@ class AnonChatService:
         for bot in self._free_bots():
             try:
                 await self._client.send_message(bot.username, bot.search_command)
-            except (ValueError, RPCError) as exc:
-                self._block(bot, "send_error", self._unavailable)
+            except Exception as exc:
+                if isinstance(exc, FloodWaitError):
+                    self._block(bot, "flood_wait", timedelta(seconds=max(int(exc.seconds), 1)))
+                else:
+                    self._block(bot, "send_error", self._unavailable)
                 logger.warning(
                     "Бот %s недоступен (%s: %s), пробую следующий",
                     bot.username,
@@ -393,6 +400,10 @@ class AnonChatService:
                 return
             self._block(bot, "no_reply", self._unavailable)
             logger.warning("Бот %s не ответил за %s с, пробую следующий", bot.username, seconds)
+            try:
+                await self._client.send_message(bot.username, bot.stop_command)
+            except Exception:
+                logger.warning("Не удалось отправить %s боту %s", bot.stop_command, bot.username)
             try:
                 await self._search()
             except Exception:
@@ -490,7 +501,9 @@ class AnonChatService:
                     await self._search()
                 elif not self._free_bots():
                     self._enter_limited()
-            elif source.found_re.search(text):
+            elif not (
+                source.strict and self._state is ChatState.CHATTING
+            ) and source.found_re.search(text):
                 self._set_state(ChatState.CHATTING)
                 self._record(Direction.SYSTEM, text)
                 logger.info("Partner found via %s", source.username)

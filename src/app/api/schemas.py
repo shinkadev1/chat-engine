@@ -34,7 +34,8 @@ class AccountOut(BaseModel):
         None, description="Until when the anonymous bot limits the account (state=limited)"
     )
     bots: list[BotStatusOut] = Field(
-        [], description="Боты по приоритету; пусто, пока аккаунт не авторизован"
+        [],
+        description="Боты аккаунта по приоритету и их доступность; пусто без сервиса чата",
     )
 
 

@@ -42,7 +42,11 @@ async def _bot_of(event, service: AnonChatService) -> str | None:
     except Exception:
         logger.debug("Не удалось получить отправителя", exc_info=True)
         return None
-    return service.match_bot(getattr(sender, "username", None))
+    matched = service.match_bot(getattr(sender, "username", None))
+    if matched is not None and not getattr(sender, "bot", False):
+        logger.warning("Игнорирую не-бота с username бота %s", matched)
+        return None
+    return matched
 
 
 def _log_incoming(service: AnonChatService, message, source: str, bot: str) -> None:
