@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from types import SimpleNamespace
 
@@ -36,8 +37,9 @@ class Clicker:
         return False
 
 
-def make(first: str = A, second: str = B):
-    settings = Settings(_env_file=None, anon_fallback_bots=[second])
+def make(first: str = A, second: str = B, reply_timeout: int | None = None):
+    extra = {} if reply_timeout is None else {"anon_bot_reply_timeout_seconds": reply_timeout}
+    settings = Settings(_env_file=None, anon_fallback_bots=[second], **extra)
     bots = settings._resolve_bots(AccountConfig(id="acc"), first)
     account = SimpleNamespace(id="acc", bots=bots)
     client = FakeClient()
@@ -63,6 +65,16 @@ class SearchPromptTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(click.pressed, ["✅ Да, искать здесь"])
         self.assertEqual(service.state, ChatState.SEARCHING)
         self.assertEqual(service.last_seq, before)
+        self.assertEqual(client.sent, [(A, "/next")])
+
+    async def test_silence_after_press_keeps_searching(self) -> None:
+        service, client = make(reply_timeout=1)
+        service._bots[0].reply_timeout = 0.1
+        await service.start_chat()
+        await service.handle_bot_message(ROOM, A, Clicker(["Да, искать здесь"]))
+        await asyncio.sleep(0.3)
+        self.assertEqual(service.state, ChatState.SEARCHING)
+        self.assertEqual(service.bot_username, A)
         self.assertEqual(client.sent, [(A, "/next")])
 
     async def test_no_button_falls_back(self) -> None:
@@ -140,10 +152,19 @@ class SearchPromptTest(unittest.IsolatedAsyncioTestCase):
 
         service, _ = make()
         pattern = service._bots[0].prompt_button_re
-        message = SimpleNamespace(buttons=[[Btn("A"), Btn("✅ Да, искать здесь")]])
+
+        async def get_buttons():
+            return [[Btn("A"), Btn("✅ Да, искать здесь")]]
+
+        async def no_buttons():
+            return None
+
+        message = SimpleNamespace(get_buttons=get_buttons)
         self.assertTrue(await press_button_factory(message)(pattern))
         self.assertEqual(clicked, ["✅ Да, искать здесь"])
-        self.assertFalse(await press_button_factory(SimpleNamespace(buttons=None))(pattern))
+        self.assertFalse(
+            await press_button_factory(SimpleNamespace(get_buttons=no_buttons))(pattern)
+        )
 
 
 if __name__ == "__main__":

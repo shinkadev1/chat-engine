@@ -40,7 +40,7 @@ def press_button_factory(message):
     """`click(pattern)` для сообщения: жмёт первую кнопку с подходящим текстом (inline и reply)."""
 
     async def click(pattern) -> bool:
-        for row in message.buttons or []:
+        for row in await message.get_buttons() or []:
             for button in row:
                 if pattern.search(getattr(button, "text", "") or ""):
                     await button.click()

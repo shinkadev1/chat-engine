@@ -620,10 +620,9 @@ class AnonChatService:
             if self._state is ChatState.SEARCHING:
                 self._cancel_reply_timer()
                 if source.prompt_re is not None and source.prompt_re.search(text):
-                    if await self._press_prompt(source, click):
-                        self._arm_reply_timer(source)
-                    else:
-                        await self._fail_over(source, "no_reply")
+                    # Нажали: бот жив, таймер ответа не взводим (он мог лишь поправить вопрос).
+                    if not await self._press_prompt(source, click):
+                        await self._fail_over(source, "search_prompt")
                     return
             elif (
                 self._state is ChatState.IDLE
