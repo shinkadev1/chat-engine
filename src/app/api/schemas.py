@@ -15,6 +15,14 @@ class ChatStatus(BaseModel):
     )
 
 
+class BotStatusOut(BaseModel):
+    username: str
+    active: bool = Field(..., description="Бот ведёт поиск или диалог прямо сейчас")
+    available: bool
+    until: datetime | None = Field(None, description="Когда бот снова станет доступен")
+    reason: str | None = Field(None, description="limit | blocked | no_reply | send_error")
+
+
 class AccountOut(BaseModel):
     id: str
     authorized: bool
@@ -24,6 +32,9 @@ class AccountOut(BaseModel):
     state: ChatState | None = Field(None, description="Null while the account is unauthorized")
     limited_until: datetime | None = Field(
         None, description="Until when the anonymous bot limits the account (state=limited)"
+    )
+    bots: list[BotStatusOut] = Field(
+        [], description="Боты по приоритету; пусто, пока аккаунт не авторизован"
     )
 
 

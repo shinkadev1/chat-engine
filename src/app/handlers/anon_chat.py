@@ -9,30 +9,43 @@ logger = logging.getLogger(__name__)
 
 def register(client: TelegramClient, *, service: AnonChatService) -> None:
     async def handle_bot_message(event: events.NewMessage.Event) -> None:
+        bot = await _bot_of(event, service)
+        if bot is None:
+            return
         message = event.message
         text = message.message or ""
-        _log_incoming(service, message, "new")
+        _log_incoming(service, message, "new", bot)
         kind = _media_kind(message)
-        if kind is not None:
+        # Файлы пересылаем только от бота, который ведёт диалог.
+        if kind is not None and service.is_active_bot(bot):
             await _forward_media(message, service, kind)
         if text:
-            await service.handle_bot_message(text)
+            await service.handle_bot_message(text, bot)
 
     async def log_bot_edit(event: events.MessageEdited.Event) -> None:
         # Только диагностика: правки сообщений бота в диалог не попадают.
-        _log_incoming(service, event.message, "edit")
+        bot = await _bot_of(event, service)
+        if bot is not None:
+            _log_incoming(service, event.message, "edit", bot)
 
-    client.add_event_handler(
-        handle_bot_message,
-        events.NewMessage(from_users=service.bot_username, incoming=True),
-    )
-    client.add_event_handler(
-        log_bot_edit,
-        events.MessageEdited(from_users=service.bot_username, incoming=True),
-    )
+    # Без from_users: у несуществующего username Telethon не может его разрешить,
+    # и обработчик не работал бы вовсе. Отправителя фильтруем сами.
+    private = {"incoming": True, "func": lambda event: event.is_private}
+    client.add_event_handler(handle_bot_message, events.NewMessage(**private))
+    client.add_event_handler(log_bot_edit, events.MessageEdited(**private))
 
 
-def _log_incoming(service: AnonChatService, message, source: str) -> None:
+async def _bot_of(event, service: AnonChatService) -> str | None:
+    """Имя бота аккаунта, приславшего событие; остальные собеседники — None."""
+    try:
+        sender = await event.get_sender()
+    except Exception:
+        logger.debug("Не удалось получить отправителя", exc_info=True)
+        return None
+    return service.match_bot(getattr(sender, "username", None))
+
+
+def _log_incoming(service: AnonChatService, message, source: str, bot: str) -> None:
     """Диагностика формата сообщений анонимного бота: тип медиа и начало текста."""
     media = type(message.media).__name__ if message.media is not None else "-"
     # Текст собеседника в диалоге не пишем — только служебные сообщения вне диалога.
@@ -42,7 +55,8 @@ def _log_incoming(service: AnonChatService, message, source: str) -> None:
     else:
         text = raw.replace("\n", " | ")[:160]
     logger.info(
-        "Бот -> %s [%s] id=%s state=%s media=%s photo=%s buttons=%s text=%r",
+        "Бот %s -> %s [%s] id=%s state=%s media=%s photo=%s buttons=%s text=%r",
+        bot,
         service.account_id,
         source,
         message.id,

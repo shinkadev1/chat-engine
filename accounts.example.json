@@ -17,6 +17,17 @@
     "anon_stop_command": "/stop",
     "anon_partner_found_pattern": "начинай общение",
     "anon_partner_left_pattern": "закончил(?:\\(а\\)|а|и)? диалог|собеседник (покинул|вышел|отключ|закончил)",
-    "anon_service_pattern": "^\\W*(?:Подсказка от бота|Надоели случайные собеседники|Хочешь продолжить общение\\?|Включи поиск по полу|Сначала подключи собеседника)"
+    "anon_service_pattern": "^\\W*(?:Подсказка от бота|Надоели случайные собеседники|Хочешь продолжить общение\\?|Включи поиск по полу|Сначала подключи собеседника)",
+    "anon_bots": [
+      "@MessageAnonBot",
+      "@nektome_mibot",
+      "@secretme"
+    ],
+    "anon_bot_profiles": {
+      "@secretme": {
+        "username": "@secretme",
+        "reply_timeout_seconds": 60
+      }
+    }
   }
 ]

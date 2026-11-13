@@ -34,3 +34,7 @@ engine_bridge → REST/WS `/api/v1/accounts/{id}/chat/...` → AnonChatService �
 `.github/workflows/ci-cd.yml`: lint, сборка и деплой из `main`. `deploy/deploy.sh` проверяет healthcheck и предусматривает откат образа.
 
 Схема описывает репозиторий, а не подтверждённое состояние production.
+
+## Несколько ботов (2026-11-13)
+
+`config.py` собирает `ResolvedAccount.bots`; `services/anon_chat.py` ведёт per-bot `until`/`reason` и выбирает бота при поиске; `handlers/anon_chat.py` ловит все личные сообщения и отбирает по username через `service.match_bot`; `cli.py dump-bot` читает историю чата с ботом.

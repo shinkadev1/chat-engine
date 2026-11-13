@@ -26,3 +26,7 @@
 ## 2026-11-12 — per-account anon_* (не выкачено)
 
 Контракт accounts.json: необязательные anon_search_command/stop_command/partner_found_pattern/partner_left_pattern/limit_pattern/service_pattern. Совпавшее с service-паттерном сообщение отбрасывается до классификации. Тесты: tests/test_account_overrides.py.
+
+## 2026-11-13 — несколько ботов на аккаунт (не выкачено)
+
+Контракт: ResolvedAccount.bots, accounts.json `anon_bots`/`anon_bot_profiles`, env ANON_FALLBACK_BOTS/ANON_BOT_PROFILES/ANON_BOT_UNAVAILABLE_SECONDS/ANON_BOT_REPLY_TIMEOUT_SECONDS. `GET /accounts` получил `bots[]` (аддитивно). Обработчик без from_users, фильтр по username. CLI `dump-bot`. Тесты: tests/test_multi_bot.py, tests/test_bot_config.py.
