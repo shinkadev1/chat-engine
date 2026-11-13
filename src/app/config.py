@@ -34,6 +34,12 @@ class BotProfile(BaseModel):
     )
     limit_pattern: str | None = None
     service_pattern: str | None = None
+    search_prompt_pattern: str | None = Field(
+        None, description="Вопрос бота перед поиском: поиск не начнётся, пока не нажата кнопка"
+    )
+    search_prompt_button: str | None = Field(
+        None, description="Текст кнопки, которую жмём в ответ на вопрос перед поиском"
+    )
     reply_timeout_seconds: int | None = Field(
         None, ge=0, description="Сколько ждать ответ бота на поиск; 0 — не ждать"
     )
@@ -44,6 +50,8 @@ class BotProfile(BaseModel):
         "stop_ack_pattern",
         "limit_pattern",
         "service_pattern",
+        "search_prompt_pattern",
+        "search_prompt_button",
     )
     @classmethod
     def _compilable(cls, value: str | None, info: ValidationInfo) -> str | None:
@@ -62,6 +70,8 @@ class ResolvedBot(BaseModel):
     stop_ack_pattern: str | None = None
     limit_pattern: str = ""
     service_pattern: str | None = None
+    search_prompt_pattern: str | None = None
+    search_prompt_button: str | None = None
     reply_timeout_seconds: float = 0
     # Есть профиль (встроенный или заданный): паттерны уточнялись под этого бота.
     profiled: bool = False
@@ -95,10 +105,13 @@ _MESSAGE_ANON: dict[str, str] = {
         r"хочешь\s+продолжить\s+общение\?|включи\s+поиск\s+по\s+полу|"
         r"сначала\s+подключи\s+собеседника)"
     ),
+    # Бот спрашивает про комнату и не ищет, пока не нажата кнопка «Да, искать здесь».
+    "search_prompt_pattern": r"^\W*ты\s+сейчас\s+в\s+комнате",
+    "search_prompt_button": r"искать\s+здесь",
 }
 
 # Перед поиском на части аккаунтов бот спрашивает «Уточним перед поиском...» с кнопками:
-# это служебное сообщение, автоответа нет (разовая ручная настройка аккаунта).
+# сервис нажимает «Пропустить» (search_prompt_*), иначе поиск не начнётся.
 _NEKTOME: dict[str, str] = {
     "search_command": "/search",
     "partner_found_pattern": r"комната\b[^\n]{0,40}собеседник\s+найден",
@@ -110,6 +123,9 @@ _NEKTOME: dict[str, str] = {
         r"выберите\s+действие)|"
         r"^[^\w\s]\W*[^\n]{0,40}?ждё?т\s+твоего\s+ответа"
     ),
+    # «Уточним перед поиском»: жмём «Пропустить», иначе поиск не начнётся.
+    "search_prompt_pattern": r"^\W*уточним\s+перед\s+поиском",
+    "search_prompt_button": r"^\s*пропустить\s*$",
 }
 
 # Уход собеседника и наш стоп бот подтверждает одним текстом, поэтому stop_ack не нужен.
@@ -169,6 +185,12 @@ class AccountConfig(BaseModel):
     anon_service_pattern: str | None = Field(
         None, description="Служебные/рекламные сообщения бота: не попадают в диалог"
     )
+    anon_search_prompt_pattern: str | None = Field(
+        None, description="Вопрос бота перед поиском (нужно нажать кнопку)"
+    )
+    anon_search_prompt_button: str | None = Field(
+        None, description="Текст кнопки для ответа на вопрос перед поиском"
+    )
     anon_bots: list[str] | None = Field(
         None, description="Запасные боты по порядку; [] — без запасных, null — ANON_FALLBACK_BOTS"
     )
@@ -182,6 +204,8 @@ class AccountConfig(BaseModel):
         "anon_limit_pattern",
         "anon_stop_ack_pattern",
         "anon_service_pattern",
+        "anon_search_prompt_pattern",
+        "anon_search_prompt_button",
     )
     @classmethod
     def _compilable(cls, value: str | None, info: ValidationInfo) -> str | None:
@@ -342,6 +366,8 @@ class Settings(BaseSettings):
                     service_pattern=pick(
                         "service_pattern", None if profiles else self.anon_service_pattern
                     ),
+                    search_prompt_pattern=pick("search_prompt_pattern", None),
+                    search_prompt_button=pick("search_prompt_button", None),
                     reply_timeout_seconds=timeout,
                     profiled=bool(profiles),
                 )

@@ -20,7 +20,8 @@ def register(client: TelegramClient, *, service: AnonChatService) -> None:
         if kind is not None and not service.probing and service.is_active_bot(bot):
             await _forward_media(message, service, kind)
         if text:
-            await service.handle_bot_message(text, bot)
+            click = press_button_factory(message) if message.reply_markup is not None else None
+            await service.handle_bot_message(text, bot, click)
 
     async def log_bot_edit(event: events.MessageEdited.Event) -> None:
         # Только диагностика: правки сообщений бота в диалог не попадают.
@@ -33,6 +34,20 @@ def register(client: TelegramClient, *, service: AnonChatService) -> None:
     private = {"incoming": True, "func": lambda event: event.is_private}
     client.add_event_handler(handle_bot_message, events.NewMessage(**private))
     client.add_event_handler(log_bot_edit, events.MessageEdited(**private))
+
+
+def press_button_factory(message):
+    """`click(pattern)` для сообщения: жмёт первую кнопку с подходящим текстом (inline и reply)."""
+
+    async def click(pattern) -> bool:
+        for row in message.buttons or []:
+            for button in row:
+                if pattern.search(getattr(button, "text", "") or ""):
+                    await button.click()
+                    return True
+        return False
+
+    return click
 
 
 async def _bot_of(event, service: AnonChatService) -> str | None:

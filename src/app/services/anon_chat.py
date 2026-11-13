@@ -30,6 +30,8 @@ _LIMIT_DURATION_RE = re.compile(r"через\s+(\d{1,3}):([0-5]\d):([0-5]\d)", r
 _MAX_PHOTO_BYTES = 20 * 1024 * 1024
 _MAX_VIDEO_BYTES = 100 * 1024 * 1024
 _MAX_PENDING_FILES = 8
+_MAX_PROMPT_PRESSES = 2
+_CLICK_TIMEOUT = 10.0
 
 
 def partner_text(text: str) -> str:
@@ -103,6 +105,8 @@ class _Bot:
     limit_re: re.Pattern[str]
     service_re: re.Pattern[str] | None
     stop_ack_re: re.Pattern[str] | None = None
+    prompt_re: re.Pattern[str] | None = None
+    prompt_button_re: re.Pattern[str] | None = None
     reply_timeout: float = 0
     strict: bool = False
     until: datetime | None = None
@@ -152,6 +156,8 @@ def _make_bot(
     reply_timeout: float,
     stop_ack: str | None = None,
     strict: bool = False,
+    prompt: str | None = None,
+    prompt_button: str | None = None,
 ) -> _Bot:
     return _Bot(
         username=username,
@@ -162,6 +168,10 @@ def _make_bot(
         limit_re=re.compile(limit, re.IGNORECASE),
         service_re=re.compile(service, re.IGNORECASE) if service else None,
         stop_ack_re=re.compile(stop_ack, re.IGNORECASE) if stop_ack else None,
+        prompt_re=re.compile(prompt, re.IGNORECASE) if prompt and prompt_button else None,
+        prompt_button_re=(
+            re.compile(prompt_button, re.IGNORECASE) if prompt and prompt_button else None
+        ),
         reply_timeout=reply_timeout,
         strict=strict,
     )
@@ -203,6 +213,8 @@ class AnonChatService:
                     limit=bot.limit_pattern,
                     service=bot.service_pattern,
                     stop_ack=getattr(bot, "stop_ack_pattern", None),
+                    prompt=getattr(bot, "search_prompt_pattern", None),
+                    prompt_button=getattr(bot, "search_prompt_button", None),
                     reply_timeout=bot.reply_timeout_seconds,
                     strict=getattr(bot, "profiled", False),
                 )
@@ -225,6 +237,7 @@ class AnonChatService:
                 )
             ]
         self._active: _Bot | None = None
+        self._prompt_presses = 0
         self._probe: asyncio.Queue[tuple[str, str]] | None = None
 
         self._limit_default = timedelta(seconds=settings.anon_limit_default_seconds)
@@ -354,6 +367,7 @@ class AnonChatService:
 
     async def probe_send(self, bot: str, text: str) -> None:
         """Шлёт боту сообщение напрямую: без состояния, истории и таймеров."""
+        self._prompt_presses = 0
         await self._client.send_message(bot, text)
 
     async def start_chat(self) -> ChatState:
@@ -430,6 +444,7 @@ class AnonChatService:
                 )
                 continue
             self._active = bot
+            self._prompt_presses = 0
             self._set_state(ChatState.SEARCHING)
             self._record(Direction.SYSTEM, f"→ {bot.search_command}")
             self._arm_reply_timer(bot)
@@ -473,16 +488,38 @@ class AnonChatService:
             self._reply_task = None
             if self._state is not ChatState.SEARCHING or self._active is not bot:
                 return
-            self._block(bot, "no_reply", self._unavailable)
             logger.warning("Бот %s не ответил за %s с, пробую следующий", bot.username, seconds)
-            try:
-                await self._client.send_message(bot.username, bot.stop_command)
-            except Exception:
-                logger.warning("Не удалось отправить %s боту %s", bot.stop_command, bot.username)
-            try:
-                await self._search()
-            except Exception:
-                logger.exception("Не удалось перейти к следующему боту")
+            await self._fail_over(bot, "no_reply")
+
+    async def _fail_over(self, bot: _Bot, reason: str) -> None:
+        """Бот не годится для этого поиска: короткая недоступность и следующий бот (под lock)."""
+        self._block(bot, reason, self._unavailable)
+        try:
+            await self._client.send_message(bot.username, bot.stop_command)
+        except Exception:
+            logger.warning("Не удалось отправить %s боту %s", bot.stop_command, bot.username)
+        try:
+            await self._search()
+        except Exception:
+            logger.exception("Не удалось перейти к следующему боту")
+
+    async def _press_prompt(self, source: _Bot, click) -> bool:
+        """Жмёт кнопку на вопрос бота перед поиском. False — кнопки нет или нажатие не вышло."""
+        if click is None or self._prompt_presses >= _MAX_PROMPT_PRESSES:
+            return False
+        self._prompt_presses += 1
+        try:
+            pressed = await asyncio.wait_for(click(source.prompt_button_re), _CLICK_TIMEOUT)
+        except Exception as exc:
+            logger.warning(
+                "Бот %s: кнопка поиска не нажата (%s)", source.username, type(exc).__name__
+            )
+            return False
+        if pressed:
+            logger.info("Бот %s: вопрос перед поиском, нажата кнопка", source.username)
+        else:
+            logger.warning("Бот %s: вопрос перед поиском без нужной кнопки", source.username)
+        return bool(pressed)
 
     async def handle_bot_photo(self, data: bytes, content_type: str) -> None:
         """Кладёт фото собеседника в очередь, чтобы мост отдал файл человеку."""
@@ -540,10 +577,12 @@ class AnonChatService:
             await self._client.send_file(self._current().username, buffer, force_document=False)
             return self._record(Direction.OUTGOING, "[фото]")
 
-    async def handle_bot_message(self, text: str, bot: str | None = None) -> None:
+    async def handle_bot_message(self, text: str, bot: str | None = None, click=None) -> None:
         """Classify an incoming message from an anonymous chat bot.
 
         `bot` — username отправителя; без него сообщение считается от текущего бота.
+        `click` — `async (re.Pattern) -> bool`: нажимает кнопку сообщения с подходящим
+        текстом (False — такой кнопки нет); нужен для вопроса бота перед поиском.
         """
         text = partner_text(text)
         if not text:
@@ -562,6 +601,12 @@ class AnonChatService:
                 # Самопроверка: лимит учитываем, остальное отдаём только проверяющему.
                 if source.limit_re.search(text):
                     await self._handle_other_bot(source, text)
+                elif (
+                    source.prompt_re is not None
+                    and source.prompt_re.search(text)
+                    and await self._press_prompt(source, click)
+                ):
+                    return
                 try:
                     self._probe.put_nowait((source.username, text))
                 except asyncio.QueueFull:
@@ -574,6 +619,19 @@ class AnonChatService:
 
             if self._state is ChatState.SEARCHING:
                 self._cancel_reply_timer()
+                if source.prompt_re is not None and source.prompt_re.search(text):
+                    if await self._press_prompt(source, click):
+                        self._arm_reply_timer(source)
+                    else:
+                        await self._fail_over(source, "no_reply")
+                    return
+            elif (
+                self._state is ChatState.IDLE
+                and source.prompt_re is not None
+                and source.prompt_re.search(text)
+            ):
+                logger.info("Вопрос перед поиском вне поиска пропущен")
+                return
 
             if self._state is not ChatState.CHATTING and source.limit_re.search(text):
                 self._record(Direction.SYSTEM, text)
