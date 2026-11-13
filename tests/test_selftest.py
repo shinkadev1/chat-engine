@@ -106,9 +106,9 @@ class SelftestTest(unittest.IsolatedAsyncioTestCase):
     async def test_probe_isolated(self) -> None:
         account, service, client = make()
         with service.subscribe() as events:
-            queue = service.begin_probe()
+            queue = await service.begin_probe()
             assert queue is not None
-            self.assertIsNone(service.begin_probe())
+            self.assertIsNone(await service.begin_probe())
             with self.assertRaises(ChatError):
                 await service.start_chat()
             await service.handle_bot_message("chat started", A)
@@ -213,10 +213,48 @@ class SelftestTest(unittest.IsolatedAsyncioTestCase):
         results = await selftest.run_selftest([account], bots=[A], **FAST)
         self.assertEqual(results[0].pairs[0].status, selftest.NO_RESPONSE)
 
+    async def test_probe_waits_for_start_chat(self) -> None:
+        account, service, client = make()
+        gate = asyncio.Event()
+        original = client.send_message
+
+        async def slow(peer: str, text: str) -> None:
+            await gate.wait()
+            await original(peer, text)
+
+        client.send_message = slow  # type: ignore[method-assign]
+        start = asyncio.create_task(service.start_chat())
+        await asyncio.sleep(0.05)
+        run = asyncio.create_task(selftest.run_selftest([account], **FAST))
+        await asyncio.sleep(0.05)
+        self.assertFalse(run.done() and service.probing)
+        gate.set()
+        await start
+        results = await run
+        self.assertEqual({p.status for p in results[0].pairs}, {selftest.BUSY})
+        self.assertEqual(client.sent, [(A, "/search")])
+        await service.shutdown()
+
+    async def test_late_partner_text_not_closed(self) -> None:
+        script = {**happy(A), (A, "/stop"): [("@bot_a", "поздно")]}
+        account, service, _ = make(script)
+        results = await selftest.run_selftest([account], bots=[A], **FAST)
+        self.assertFalse(results[0].pairs[0].closed)
+        self.assertFalse(service.probing)
+
+    async def test_late_found_after_stop_not_chatting(self) -> None:
+        script = {**happy(A), (A, "/stop"): ["chat started", "partner left"]}
+        account, service, _ = make(script)
+        results = await selftest.run_selftest([account], bots=[A], **FAST)
+        self.assertTrue(results[0].pairs[0].closed)
+        await asyncio.sleep(0.05)
+        self.assertIsNot(service.state, ChatState.CHATTING)
+        self.assertEqual(service.history(), [])
+
     async def test_text_hidden_when_probing(self) -> None:
         _, service, _ = make()
         message = SimpleNamespace(message="секрет", id=1, media=None, photo=None, reply_markup=None)
-        service.begin_probe()
+        await service.begin_probe()
         with self.assertLogs("app.handlers.anon_chat", "INFO") as logs:
             _log_incoming(service, message, "new", A)
         self.assertNotIn("секрет", logs.output[0])
@@ -272,6 +310,32 @@ class CliTest(unittest.TestCase):
         self.assertEqual(len(lines), 3)
         self.assertIn("reply_received", lines[1])
         self.assertIn("(ValueError)", lines[2])
+
+    def test_http_error_detail(self) -> None:
+        import io
+        import urllib.error
+
+        err = urllib.error.HTTPError(
+            "u",
+            409,
+            "Conflict",
+            None,
+            io.BytesIO(b'{"detail": "already running"}'),  # type: ignore[arg-type]
+        )
+        with patch("urllib.request.urlopen", side_effect=err):
+            with self.assertRaises(SystemExit) as ctx:
+                cli._selftest(
+                    SimpleNamespace(
+                        account=None,
+                        bot=None,
+                        dry_run=True,
+                        text="x",
+                        search_timeout=1,
+                        reply_timeout=1,
+                        close_timeout=1,
+                    )
+                )
+        self.assertEqual(str(ctx.exception), "Selftest failed: HTTP 409 already running")
 
     def test_argparse(self) -> None:
         argv = ["bot", "selftest", "--dry-run", "--account", "a", "--bot", "@b"]

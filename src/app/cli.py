@@ -119,6 +119,14 @@ def format_selftest(results: list[dict]) -> list[str]:
     return lines
 
 
+def _http_detail(exc: urllib.error.HTTPError) -> str:
+    try:
+        detail = json.loads(exc.read()).get("detail")
+    except (OSError, ValueError, AttributeError):
+        return ""
+    return f" {detail}" if isinstance(detail, str) and detail else ""
+
+
 def _selftest(args: argparse.Namespace) -> None:
     base = (settings.selftest_url or f"http://127.0.0.1:{settings.api_port}").rstrip("/")
     payload = {
@@ -143,7 +151,7 @@ def _selftest(args: argparse.Namespace) -> None:
         with urllib.request.urlopen(request, timeout=3600) as response:
             body = json.load(response)
     except urllib.error.HTTPError as exc:
-        raise SystemExit(f"Selftest failed: HTTP {exc.code}") from None
+        raise SystemExit(f"Selftest failed: HTTP {exc.code}{_http_detail(exc)}") from None
     except OSError as exc:
         raise SystemExit(f"Selftest failed: {type(exc).__name__}") from None
     for line in format_selftest(body["results"]):

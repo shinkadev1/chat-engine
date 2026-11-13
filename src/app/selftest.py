@@ -170,7 +170,13 @@ async def _close(
         return left
     if left:
         return True
-    return await _next_text(queue, key, time.monotonic() + wait) is not None
+    deadline = time.monotonic() + wait
+    while (message := await _next_text(queue, key, deadline)) is not None:
+        if bot.left_re.search(message):
+            return True
+        if bot.service_re is not None and bot.service_re.search(message):
+            return True
+    return False
 
 
 async def _probe_account(
@@ -193,7 +199,7 @@ async def _probe_account(
         result.pairs = [PairResult(b.username, SKIPPED, "dry run") for b in bots]
         return
 
-    queue = service.begin_probe()
+    queue = await service.begin_probe()
     if queue is None:
         result.pairs = [PairResult(b.username, BUSY, "account is busy") for b in bots]
         return
@@ -217,6 +223,7 @@ async def _probe_account(
                 )
             )
     finally:
+        _drain(queue)
         service.end_probe()
 
 

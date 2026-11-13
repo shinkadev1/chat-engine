@@ -311,16 +311,17 @@ class AnonChatService:
     def probing(self) -> bool:
         return self._probe is not None
 
-    def begin_probe(self) -> asyncio.Queue[tuple[str, str]] | None:
+    async def begin_probe(self) -> asyncio.Queue[tuple[str, str]] | None:
         """Включает режим самопроверки; None, если аккаунт занят диалогом или уже проверяется.
 
         Пока режим включён, сообщения ботов уходят только в возвращённую очередь
         (username бота, текст): ни история, ни подписчики их не видят.
         """
-        if self._probe is not None or self._state in (ChatState.SEARCHING, ChatState.CHATTING):
-            return None
-        self._probe = asyncio.Queue(maxsize=100)
-        return self._probe
+        async with self._lock:
+            if self._probe is not None or self._state in (ChatState.SEARCHING, ChatState.CHATTING):
+                return None
+            self._probe = asyncio.Queue(maxsize=100)
+            return self._probe
 
     def end_probe(self) -> None:
         self._probe = None
