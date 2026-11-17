@@ -1,5 +1,9 @@
 # История важных изменений
 
+## 2026-11-17 — лёгкая проверка с отчётом в Telegram
+
+`app/healthcheck.py`, `app/notify.py`, `POST /api/v1/selftest/health`, `bot healthcheck [--notify]`; планировщик по `SELFTEST_INTERVAL_HOURS`. `AnonChatService.last_partner_found_at` — в памяти, только реальные диалоги. См. README.
+
 ## 2026-10-31 — оркестрация и фиксация контекста
 
 Добавлены .codex/config.toml и explorer/planner/developer/reviewer/reporter, правила routing и workflow в AGENTS.md. Модель planner/reviewer — gpt-6-astra/high по подтверждённому выбору пользователя. Обновлены правила и память; контекст и конфигурация сохраняются отдельным локальным коммитом без прикладных изменений и push. Проверки: 42 TOML, строгая загрузка конфигураций в 7 корнях, diff check, reviewer PASS; mobile typecheck прошёл. Запуск всех ролей и ESLint не проверены (ESLint не настроен).

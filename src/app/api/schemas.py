@@ -138,3 +138,31 @@ class SelftestAccountOut(BaseModel):
 class SelftestResponse(BaseModel):
     dry_run: bool
     results: list[SelftestAccountOut]
+
+
+class HealthRequest(BaseModel):
+    notify: bool = Field(False, description="Отправить сводку в Telegram-чат отчётов")
+
+
+class HealthBotOut(BaseModel):
+    bot: str
+    mark: str = Field(description="+, -, лимит или ? (занят, данных нет)")
+    detail: str | None = None
+
+
+class HealthAccountOut(BaseModel):
+    account: str
+    active: bool
+    reason: str | None = None
+    busy: bool = False
+    bots: list[HealthBotOut]
+
+
+class HealthResponse(BaseModel):
+    text: str
+    active_accounts: int
+    total_accounts: int
+    working: int
+    total: int
+    notified: bool = False
+    accounts: list[HealthAccountOut]

@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -261,6 +261,13 @@ class Settings(BaseSettings):
     selftest_url: str | None = Field(
         None, description="Адрес API для `bot selftest`; по умолчанию http://127.0.0.1:{api_port}"
     )
+    selftest_interval_hours: float = Field(
+        0, ge=0, description="Период лёгкой проверки с отчётом в Telegram, часов; 0 — выключено"
+    )
+    selftest_notify_bot_token: SecretStr | None = Field(
+        None, description="Токен бота, который шлёт отчёт проверки"
+    )
+    selftest_notify_chat_id: str | None = Field(None, description="Чат/группа для отчёта проверки")
     cors_origins: list[str] = ["*"]
 
     anon_bot_username: str = Field(

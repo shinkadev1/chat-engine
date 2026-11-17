@@ -4,7 +4,15 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.accounts import UnknownAccountError
 from app.api.deps import ManagerDep
-from app.api.schemas import SelftestAccountOut, SelftestRequest, SelftestResponse
+from app.api.schemas import (
+    HealthRequest,
+    HealthResponse,
+    SelftestAccountOut,
+    SelftestRequest,
+    SelftestResponse,
+)
+from app.config import settings
+from app.healthcheck import notify_report, run_healthcheck
 from app.selftest import is_running, run_selftest
 
 router = APIRouter(tags=["selftest"])
@@ -44,3 +52,19 @@ async def selftest(body: SelftestRequest, manager: ManagerDep) -> SelftestRespon
         dry_run=body.dry_run,
         results=[SelftestAccountOut.model_validate(asdict(r)) for r in results],
     )
+
+
+@router.post("/selftest/health", summary="Лёгкая проверка без сообщений незнакомым")
+async def selftest_health(body: HealthRequest, manager: ManagerDep) -> HealthResponse:
+    """Только сессия и стоп-команда ботам; по `notify` шлёт сводку в Telegram."""
+    try:
+        report = await run_healthcheck(
+            manager.list(), interval_hours=settings.selftest_interval_hours or 4
+        )
+    except RuntimeError:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail="Selftest is already running"
+        ) from None
+    if body.notify:
+        await notify_report(settings, report)
+    return HealthResponse.model_validate(asdict(report))

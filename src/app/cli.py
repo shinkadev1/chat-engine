@@ -158,6 +158,29 @@ def _selftest(args: argparse.Namespace) -> None:
         print(line)
 
 
+def _healthcheck(args: argparse.Namespace) -> None:
+    base = (settings.selftest_url or f"http://127.0.0.1:{settings.api_port}").rstrip("/")
+    headers = {"Content-Type": "application/json"}
+    if settings.api_token:
+        headers["Authorization"] = f"Bearer {settings.api_token}"
+    request = urllib.request.Request(
+        f"{base}/api/v1/selftest/health",
+        data=json.dumps({"notify": args.notify}).encode(),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=600) as response:
+            body = json.load(response)
+    except urllib.error.HTTPError as exc:
+        raise SystemExit(f"Healthcheck failed: HTTP {exc.code}{_http_detail(exc)}") from None
+    except OSError as exc:
+        raise SystemExit(f"Healthcheck failed: {type(exc).__name__}") from None
+    print(body["text"])
+    if args.notify:
+        print("Отправлено в Telegram" if body.get("notified") else "В Telegram не отправлено")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="app", description="Anonymous chat userbot")
     subparsers = parser.add_subparsers(dest="command")
@@ -188,6 +211,12 @@ def main() -> None:
     selftest_parser.add_argument("--reply-timeout", type=float, default=60)
     selftest_parser.add_argument("--close-timeout", type=float, default=15)
 
+    health_parser = subparsers.add_parser(
+        "healthcheck",
+        help="Light check through the running service (no messages to strangers)",
+    )
+    health_parser.add_argument("--notify", action="store_true", help="Also send to Telegram")
+
     args = parser.parse_args()
     setup_logging(settings.log_level)
 
@@ -199,6 +228,8 @@ def main() -> None:
                 asyncio.run(_dump_bot(args.account_id, args.bot, args.limit))
             case "selftest":
                 _selftest(args)
+            case "healthcheck":
+                _healthcheck(args)
             case "accounts":
                 asyncio.run(_show_accounts())
             case _:

@@ -239,6 +239,8 @@ class AnonChatService:
         self._active: _Bot | None = None
         self._prompt_presses = 0
         self._probe: asyncio.Queue[tuple[str, str]] | None = None
+        # Когда в РЕАЛЬНОМ диалоге последний раз нашёлся собеседник, по боту (в памяти).
+        self._found_at: dict[str, datetime] = {}
 
         self._limit_default = timedelta(seconds=settings.anon_limit_default_seconds)
         self._unavailable = timedelta(seconds=settings.anon_bot_unavailable_seconds)
@@ -325,6 +327,10 @@ class AnonChatService:
             yield queue
         finally:
             self._subscribers.discard(queue)
+
+    def last_partner_found_at(self, bot: str) -> datetime | None:
+        """Время последнего найденного собеседника у бота в реальном диалоге (не пробе)."""
+        return self._found_at.get(normalize_bot(bot))
 
     @property
     def probing(self) -> bool:
@@ -647,6 +653,7 @@ class AnonChatService:
                 source.strict and self._state is ChatState.CHATTING
             ) and source.found_re.search(text):
                 self._set_state(ChatState.CHATTING)
+                self._found_at[source.key] = self._now()
                 self._record(Direction.SYSTEM, text)
                 logger.info("Partner found via %s", source.username)
             elif source.stop_ack_re is not None and source.stop_ack_re.search(text):

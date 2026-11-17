@@ -13,6 +13,7 @@ from app.accounts import AccountManager
 from app.api.deps import require_token
 from app.api.routers import accounts, chat, selftest, ws
 from app.config import settings
+from app.healthcheck import start_scheduler, stop_scheduler
 from app.services.anon_chat import ChatError
 
 logger = logging.getLogger(__name__)
@@ -29,9 +30,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.accounts = manager
 
     await manager.start()
+    health_task = start_scheduler(manager, settings)
     try:
         yield
     finally:
+        await stop_scheduler(health_task)
         await manager.stop()
 
 
