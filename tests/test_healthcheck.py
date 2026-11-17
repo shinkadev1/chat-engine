@@ -171,16 +171,34 @@ class ProbeGuardsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(clicks), 1)
         service.end_probe()
 
-    async def test_late_stop_ack_keeps_reply_timer(self) -> None:
+    async def test_stop_ack_keeps_reply_timer(self) -> None:
         _, service, _ = build(reply_timeout=30)
         await service.start_chat()
         task = service._reply_task
         self.assertIsNotNone(task)
         await service.handle_bot_message("you stopped", A)
-        await service.handle_bot_message("searching", A)
         self.assertIs(service._reply_task, task)
         self.assertFalse(task.cancelled())
-        await service.handle_bot_message("hello?", A)
+        await service.shutdown()
+
+    async def test_service_text_cancels_reply_timer(self) -> None:
+        _, service, _ = build(reply_timeout=30)
+        await service.start_chat()
+        await service.handle_bot_message("searching", A)
+        self.assertIsNone(service._reply_task)
+        await service.shutdown()
+
+    async def test_prompt_press_cancels_reply_timer(self) -> None:
+        _, service, _ = build(reply_timeout=30)
+        await service.start_chat()
+        clicks: list = []
+
+        async def click(pattern):
+            clicks.append(pattern)
+            return True
+
+        await service.handle_bot_message("which chat?", A, click=click)
+        self.assertEqual(len(clicks), 1)
         self.assertIsNone(service._reply_task)
         await service.shutdown()
 

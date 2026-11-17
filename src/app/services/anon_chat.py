@@ -628,9 +628,11 @@ class AnonChatService:
                 return
 
             if self._state is ChatState.SEARCHING:
-                # Запоздалый ответ на стоп/служебка — не прогресс бота, таймер не снимаем.
-                late = (source.stop_ack_re is not None and source.stop_ack_re.search(text)) or (
-                    source.service_re is not None and source.service_re.search(text)
+                # Запоздалый ack нашего стопа — не прогресс бота, таймер не снимаем.
+                late = (
+                    source.stop_ack_re is not None
+                    and source.stop_ack_re.search(text)
+                    and not (source.prompt_re is not None and source.prompt_re.search(text))
                 )
                 if not late:
                     self._cancel_reply_timer()
