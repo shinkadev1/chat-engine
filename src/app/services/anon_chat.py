@@ -239,6 +239,7 @@ class AnonChatService:
         self._active: _Bot | None = None
         self._prompt_presses = 0
         self._probe: asyncio.Queue[tuple[str, str]] | None = None
+        self._probe_press = True
         # Когда в РЕАЛЬНОМ диалоге последний раз нашёлся собеседник, по боту (в памяти).
         self._found_at: dict[str, datetime] = {}
 
@@ -336,16 +337,18 @@ class AnonChatService:
     def probing(self) -> bool:
         return self._probe is not None
 
-    async def begin_probe(self) -> asyncio.Queue[tuple[str, str]] | None:
+    async def begin_probe(self, press_prompt: bool = True) -> asyncio.Queue[tuple[str, str]] | None:
         """Включает режим самопроверки; None, если аккаунт занят диалогом или уже проверяется.
 
         Пока режим включён, сообщения ботов уходят только в возвращённую очередь
         (username бота, текст): ни история, ни подписчики их не видят.
+        `press_prompt=False` — не нажимать кнопки вопроса перед поиском (лёгкая проверка).
         """
         async with self._lock:
             if self._probe is not None or self._state in (ChatState.SEARCHING, ChatState.CHATTING):
                 return None
             self._probe = asyncio.Queue(maxsize=100)
+            self._probe_press = press_prompt
             return self._probe
 
     def end_probe(self) -> None:
@@ -608,7 +611,8 @@ class AnonChatService:
                 if source.limit_re.search(text):
                     await self._handle_other_bot(source, text)
                 elif (
-                    source.prompt_re is not None
+                    self._probe_press
+                    and source.prompt_re is not None
                     and source.prompt_re.search(text)
                     and await self._press_prompt(source, click)
                 ):
@@ -624,7 +628,12 @@ class AnonChatService:
                 return
 
             if self._state is ChatState.SEARCHING:
-                self._cancel_reply_timer()
+                # Запоздалый ответ на стоп/служебка — не прогресс бота, таймер не снимаем.
+                late = (source.stop_ack_re is not None and source.stop_ack_re.search(text)) or (
+                    source.service_re is not None and source.service_re.search(text)
+                )
+                if not late:
+                    self._cancel_reply_timer()
                 if source.prompt_re is not None and source.prompt_re.search(text):
                     # Нажали: бот жив, таймер ответа не взводим (он мог лишь поправить вопрос).
                     if not await self._press_prompt(source, click):

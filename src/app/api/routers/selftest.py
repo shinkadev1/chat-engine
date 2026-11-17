@@ -13,7 +13,7 @@ from app.api.schemas import (
 )
 from app.config import settings
 from app.healthcheck import notify_report, run_healthcheck
-from app.selftest import is_running, run_selftest
+from app.selftest import SelftestBusyError, is_running, run_selftest
 
 router = APIRouter(tags=["selftest"])
 
@@ -44,7 +44,7 @@ async def selftest(body: SelftestRequest, manager: ManagerDep) -> SelftestRespon
             reply_timeout=body.reply_timeout,
             close_timeout=body.close_timeout,
         )
-    except RuntimeError:
+    except SelftestBusyError:
         raise HTTPException(
             status.HTTP_409_CONFLICT, detail="Selftest is already running"
         ) from None
@@ -61,7 +61,7 @@ async def selftest_health(body: HealthRequest, manager: ManagerDep) -> HealthRes
         report = await run_healthcheck(
             manager.list(), interval_hours=settings.selftest_interval_hours or 4
         )
-    except RuntimeError:
+    except SelftestBusyError:
         raise HTTPException(
             status.HTTP_409_CONFLICT, detail="Selftest is already running"
         ) from None

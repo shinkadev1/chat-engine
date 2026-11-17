@@ -16,7 +16,7 @@ from app.services.anon_chat import AnonChatService
 WHEN = datetime(2026, 11, 17, 11, 0, tzinfo=UTC)  # 14:00 МСК
 
 
-def build(script=None, *, acc_id="acc", bots=(A, B)):
+def build(script=None, *, acc_id="acc", bots=(A, B), reply_timeout=0):
     ref: list = []
     cfgs = [
         SimpleNamespace(
@@ -28,7 +28,9 @@ def build(script=None, *, acc_id="acc", bots=(A, B)):
             limit_pattern="исчерпали дневной лимит",
             service_pattern="searching",
             stop_ack_pattern="you stopped",
-            reply_timeout_seconds=0,
+            reply_timeout_seconds=reply_timeout,
+            search_prompt_pattern="which chat",
+            search_prompt_button="yes",
         )
         for name in bots
     ]
@@ -109,7 +111,7 @@ class HealthcheckTest(unittest.IsolatedAsyncioTestCase):
     async def test_skipped_when_lock_held(self) -> None:
         account, _, client = build()
         async with selftest._RUN_LOCK:
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(selftest.SelftestBusyError):
                 await healthcheck.run_healthcheck([account])
         self.assertEqual(client.sent, [])
 
@@ -149,6 +151,38 @@ class HealthcheckTest(unittest.IsolatedAsyncioTestCase):
             await healthcheck.stop_scheduler(task)
         self.assertEqual(len(sent), 1)
         self.assertTrue(task.cancelled() or task.done())
+
+
+class ProbeGuardsTest(unittest.IsolatedAsyncioTestCase):
+    async def test_light_probe_does_not_press_prompt(self) -> None:
+        _, service, _ = build()
+        clicks: list = []
+
+        async def click(pattern):
+            clicks.append(pattern)
+            return True
+
+        await service.begin_probe(press_prompt=False)
+        await service.handle_bot_message("which chat?", A, click=click)
+        self.assertEqual(clicks, [])
+        service.end_probe()
+        await service.begin_probe()
+        await service.handle_bot_message("which chat?", A, click=click)
+        self.assertEqual(len(clicks), 1)
+        service.end_probe()
+
+    async def test_late_stop_ack_keeps_reply_timer(self) -> None:
+        _, service, _ = build(reply_timeout=30)
+        await service.start_chat()
+        task = service._reply_task
+        self.assertIsNotNone(task)
+        await service.handle_bot_message("you stopped", A)
+        await service.handle_bot_message("searching", A)
+        self.assertIs(service._reply_task, task)
+        self.assertFalse(task.cancelled())
+        await service.handle_bot_message("hello?", A)
+        self.assertIsNone(service._reply_task)
+        await service.shutdown()
 
 
 class NotifyTest(unittest.TestCase):

@@ -32,6 +32,10 @@ _FLAGS = ("restricted", "scam", "fake", "deleted")
 _RUN_LOCK = asyncio.Lock()
 
 
+class SelftestBusyError(RuntimeError):
+    """Уже идёт другой прогон самопроверки."""
+
+
 def is_running() -> bool:
     return _RUN_LOCK.locked()
 
@@ -245,7 +249,7 @@ async def run_selftest(
 ) -> list[AccountResult]:
     """Последовательно проверяет аккаунты. Один прогон за раз (иначе RuntimeError)."""
     if _RUN_LOCK.locked():
-        raise RuntimeError("Selftest is already running")
+        raise SelftestBusyError("Selftest is already running")
     results: list[AccountResult] = []
     async with _RUN_LOCK:
         for account in accounts:

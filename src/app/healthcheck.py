@@ -115,7 +115,7 @@ async def _check_account(account, window: float, wait: float) -> AccountHealth:
     queue = None
     working = service.state in (ChatState.SEARCHING, ChatState.CHATTING)
     if not working:
-        queue = await service.begin_probe()
+        queue = await service.begin_probe(press_prompt=False)
     health.busy = queue is None and service.state is not ChatState.LIMITED
     try:
         for status in service.bots_status():
@@ -172,9 +172,9 @@ async def run_healthcheck(
     probe_wait: float | None = None,
     now: datetime | None = None,
 ) -> HealthReport:
-    """Один лёгкий прогон под общим замком самопроверки (занят — RuntimeError)."""
+    """Один лёгкий прогон под общим замком самопроверки (занят — SelftestBusyError)."""
     if selftest._RUN_LOCK.locked():
-        raise RuntimeError("Selftest is already running")
+        raise selftest.SelftestBusyError("Selftest is already running")
     window = 2 * interval_hours * 3600
     results: list[AccountHealth] = []
     async with selftest._RUN_LOCK:
@@ -213,10 +213,10 @@ async def _scheduler(manager, settings: Settings, first_delay: float) -> None:
             await notify_report(settings, report)
         except asyncio.CancelledError:
             raise
-        except RuntimeError:
+        except selftest.SelftestBusyError:
             logger.info("Плановая проверка пропущена: идёт самопроверка")
         except Exception as exc:
-            logger.warning("Плановая проверка не удалась: %s", type(exc).__name__)
+            logger.error("Плановая проверка не удалась: %s", type(exc).__name__)
         await asyncio.sleep(interval * 3600)
 
 
