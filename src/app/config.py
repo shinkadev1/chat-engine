@@ -170,8 +170,8 @@ class AccountConfig(BaseModel):
     session_name: str | None = Field(None, description="Defaults to <SESSIONS_DIR>/<id>")
     phone: str | None = Field(None, description="Pre-fills the number during `login`")
     anon_bot_username: str | None = None
-    mode: Literal["normal", "adult"] = Field(
-        "normal", description="normal — обычный анонимный чат, adult — «пошлый чат» (premium)"
+    mode: Literal["normal", "adult", "any"] = Field(
+        "normal", description="normal — обычный чат, adult — «пошлый чат» (premium), any — оба"
     )
     # Необязательные переопределения; без них берутся глобальные ANON_* из Settings.
     anon_search_command: str | None = None
@@ -221,7 +221,7 @@ class ResolvedAccount(BaseModel):
     session_path: str
     phone: str | None
     anon_bot_username: str
-    mode: Literal["normal", "adult"] = "normal"
+    mode: Literal["normal", "adult", "any"] = "normal"
     anon_search_command: str = "/search"
     anon_stop_command: str = "/stop"
     anon_partner_found_pattern: str = ""

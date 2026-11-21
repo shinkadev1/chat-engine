@@ -17,6 +17,9 @@ class AccountModeTests(unittest.TestCase):
     def test_default_mode_is_normal(self) -> None:
         self.assertEqual(AccountConfig(id="main").mode, "normal")
 
+    def test_any_mode_accepted(self) -> None:
+        self.assertEqual(AccountConfig.model_validate({"id": "x", "mode": "any"}).mode, "any")
+
     def test_unknown_mode_rejected(self) -> None:
         with self.assertRaises(ValidationError):
             AccountConfig.model_validate({"id": "x", "mode": "weird"})
@@ -55,7 +58,7 @@ class AccountsEndpointTests(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             settings = make_settings(
-                Path(tmp) / "a.json", [{"id": "spec1", "mode": "adult"}, {"id": "main"}]
+                Path(tmp) / "a.json", [{"id": "spec1", "mode": "any"}, {"id": "main"}]
             )
             configs = settings.resolve_accounts()
         accounts = [
@@ -64,7 +67,7 @@ class AccountsEndpointTests(unittest.IsolatedAsyncioTestCase):
         ]
         manager = SimpleNamespace(list=lambda: accounts)
         out = await list_accounts(manager)
-        self.assertEqual({a.id: a.mode for a in out}, {"spec1": "adult", "main": "normal"})
+        self.assertEqual({a.id: a.mode for a in out}, {"spec1": "any", "main": "normal"})
 
 
 if __name__ == "__main__":
